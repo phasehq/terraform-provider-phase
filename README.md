@@ -11,30 +11,46 @@ This Terraform provider allows you to manage secrets in Phase from your Terrafor
 
 1. Clone the repository
 2. Enter the repository directory
-3. Build the provider using the Go `install` command: 
-```sh
-go install
-```
+3. Build the provider using the Go `install` command:
+   ```sh
+   go install
+   ```
 
 ## Using the provider
 
 To use the latest version of the provider in your Terraform configuration, add the following terraform block:
 
 ```hcl
+// Import
 terraform {
   required_providers {
     phase = {
-      source = "phasehq/phase"
+      source  = "phasehq/phase"
+      version = "~> 0.1.0"
     }
   }
 }
 
+
+// Initialize
 provider "phase" {
-  # Configuration options
+  service_token = "pss_service:v1:..."
+}
+
+// Fetch secrets
+data "phase_secrets" "starlink-command" {
+  env = "Production"
+  application_id = "b6ad8824-7133-4839-8013-f87c2182fc61"
+  path = "/"
+}
+
+output "secrets" {
+  value = data.phase_secrets.starlink-command.secrets
+  sensitive = true
 }
 ```
 
-See the [Phase Provider documentation](docs/index.md) for all the available options.
+See the [Phase Provider documentation](docs/index.md) for all the available options and data sources.
 
 ## Developing the Provider
 
@@ -44,10 +60,43 @@ To compile the provider, run `go install`. This will build the provider and put 
 
 To generate or update documentation, run `go generate`.
 
-In order to run the full suite of Acceptance tests, run `make testacc`.
+1. Create a local plugin directory for Terraform:
+   ```sh
+   mkdir -p ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/0.1.0/$(go env GOOS)_$(go env GOARCH)
+   ```
 
-*Note:* Acceptance tests create real resources, and often cost money to run.
+2. Move the compiled binary to the plugin directory:
+   ```sh
+   mv terraform-provider-phase ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/0.1.0/$(go env GOOS)_$(go env GOARCH)
+   ```
 
-```sh
-$ make testacc
-```
+3. In your Terraform configuration, specify the local version:
+   ```hcl
+   terraform {
+     required_providers {
+       phase = {
+         source  = "registry.terraform.io/phasehq/phase"
+         version = "0.1.0"
+       }
+     }
+   }
+   ```
+
+4. Initialize terraform
+    ```
+    terraform init
+    ```
+
+5. Run terraform plan
+    ```
+    terraform plan
+    ```
+
+6. Initialize terraform
+    ```
+    terraform apply
+    ```
+
+## License
+
+This provider is distributed under the [MIT License](LICENSE).
