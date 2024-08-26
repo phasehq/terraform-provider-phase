@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.34.0
-	github.com/phasehq/golang-sdk v1.0.0
+	github.com/phasehq/golang-sdk v1.0.1
 )
 
 require (
