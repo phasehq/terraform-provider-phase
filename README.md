@@ -2,21 +2,7 @@
 
 This Terraform provider allows you to manage secrets in Phase from your Terraform configurations.
 
-## Requirements
-
-- [Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
-- [Go](https://golang.org/doc/install) >= 1.18
-
-## Building The Provider
-
-1. Clone the repository
-2. Enter the repository directory
-3. Build the provider using the Go `install` command:
-   ```sh
-   go install
-   ```
-
-## Using the provider
+## Usage
 
 To use the latest version of the provider in your Terraform configuration, add the following terraform block:
 
@@ -51,6 +37,20 @@ output "secrets" {
 ```
 
 See the [Phase Provider documentation](docs/index.md) for all the available options and data sources.
+
+## Requirements
+
+- [Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
+- [Go](https://golang.org/doc/install) >= 1.18
+
+## Building The Provider
+
+1. Clone the repository
+2. Enter the repository directory
+3. Build the provider using the Go `install` command:
+   ```sh
+   go install
+   ```
 
 ## Developing the Provider
 
