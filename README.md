@@ -47,9 +47,9 @@ See the [Phase Provider documentation](docs/index.md) for all the available opti
 
 1. Clone the repository
 2. Enter the repository directory
-3. Build the provider using the Go `install` command:
+3. Build the provider using the Go `build` command:
    ```sh
-   go install
+    go build -o terraform-provider-phase
    ```
 
 ## Developing the Provider
