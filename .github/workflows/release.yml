@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     branches:
-      - ''
+      - '*'
     tags:
       - 'v*'
 
@@ -20,39 +20,34 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
-
       - name: Install libsodium (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libsodium-dev
-
       - name: Install libsodium (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install libsodium
-
-      - name: Install vcpkg
+      - name: Setup vcpkg
         if: matrix.os == 'windows-latest'
         uses: lukka/run-vcpkg@v7
         with:
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
           vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
-
+          vcpkgTriplet: 'x64-windows-static'
+          vcpkgArguments: 'libsodium'
       - name: Install libsodium (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          vcpkg install libsodium:x64-windows-static
-          echo "VCPKG_ROOT=${{ env.VCPKG_INSTALLATION_ROOT }}" >> $GITHUB_ENV
-          echo "${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows-static\include" >> $GITHUB_PATH
-          echo "${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows-static\lib" >> $GITHUB_PATH
-
+          echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "${{ github.workspace }}/vcpkg/installed/x64-windows-static/include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "${{ github.workspace }}/vcpkg/installed/x64-windows-static/lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build
         run: |
           go mod tidy
           go build -v ./...
-
       - name: Test
         run: go test -v ./...
 
@@ -67,41 +62,36 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
-
       - name: Install libsodium (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libsodium-dev
-
       - name: Install libsodium (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install libsodium
-
-      - name: Install vcpkg
+      - name: Setup vcpkg
         if: matrix.os == 'windows-latest'
         uses: lukka/run-vcpkg@v7
         with:
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
           vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
-
+          vcpkgTriplet: 'x64-windows-static'
+          vcpkgArguments: 'libsodium'
       - name: Install libsodium (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          vcpkg install libsodium:x64-windows-static
-          echo "VCPKG_ROOT=${{ env.VCPKG_INSTALLATION_ROOT }}" >> $GITHUB_ENV
-          echo "${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows-static\include" >> $GITHUB_PATH
-          echo "${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows-static\lib" >> $GITHUB_PATH
-
+          echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "${{ github.workspace }}/vcpkg/installed/x64-windows-static/include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "${{ github.workspace }}/vcpkg/installed/x64-windows-static/lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
         id: import_gpg
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
