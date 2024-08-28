@@ -44,14 +44,18 @@ jobs:
         Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
-        echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        # Find the correct paths
+        $includeDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "sodium.h" | Select-Object -ExpandProperty DirectoryName
+        $libDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "libsodium.dll" | Select-Object -ExpandProperty DirectoryName
+        
+        echo "SODIUM_INCLUDE_DIR=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "SODIUM_LIB_DIR=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
         # Create a pkg-config-like script
         @"
         #!/bin/sh
-        echo "-IC:/libsodium/include -LC:/libsodium/x64/Release/v142/dynamic -lsodium"
+        echo "-I$includeDir -L$libDir -lsodium"
         "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
         
         echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -60,9 +64,9 @@ jobs:
       run: |
         go mod tidy
         if [[ "${{ runner.os }}" == "Windows" ]]; then
-          export CGO_CFLAGS="-IC:/libsodium/include"
-          export CGO_LDFLAGS="-LC:/libsodium/x64/Release/v142/dynamic -lsodium"
-          cp C:/libsodium/x64/Release/v142/dynamic/libsodium.dll C:/Windows/System32/
+          export CGO_CFLAGS="-I${{ env.SODIUM_INCLUDE_DIR }}"
+          export CGO_LDFLAGS="-L${{ env.SODIUM_LIB_DIR }} -lsodium"
+          cp "${{ env.SODIUM_LIB_DIR }}/libsodium.dll" "C:/Windows/System32/"
           go build -v -x ./...
         else
           go build -v ./...
@@ -104,19 +108,23 @@ jobs:
         Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
-        echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        # Find the correct paths
+        $includeDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "sodium.h" | Select-Object -ExpandProperty DirectoryName
+        $libDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "libsodium.dll" | Select-Object -ExpandProperty DirectoryName
+        
+        echo "SODIUM_INCLUDE_DIR=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "SODIUM_LIB_DIR=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
         # Create a pkg-config-like script
         @"
         #!/bin/sh
-        echo "-IC:/libsodium/include -LC:/libsodium/x64/Release/v142/dynamic -lsodium"
+        echo "-I$includeDir -L$libDir -lsodium"
         "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
         
         echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
-        cp C:/libsodium/x64/Release/v142/dynamic/libsodium.dll C:/Windows/System32/
+        cp "$libDir/libsodium.dll" "C:/Windows/System32/"
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
       id: import_gpg
@@ -130,5 +138,5 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-        CGO_CFLAGS: -IC:/libsodium/include
-        CGO_LDFLAGS: -LC:/libsodium/x64/Release/v142/dynamic -lsodium
+        CGO_CFLAGS: -I${{ env.SODIUM_INCLUDE_DIR }}
+        CGO_LDFLAGS: -L${{ env.SODIUM_LIB_DIR }} -lsodium
