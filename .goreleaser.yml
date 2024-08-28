@@ -1,85 +1,75 @@
-name: Build and Release
+version: 2
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: linux
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
 
-on:
-  push:
-    branches:
-      - '*'
+  - id: darwin
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
 
-permissions:
-  contents: write
+  - id: windows
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - windows
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
 
-jobs:
-  goreleaser:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-      - name: Install libsodium (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libsodium-dev
-      - name: Install libsodium (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install libsodium
-      - name: Install libsodium and setup pkg-config (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          
-          # Download and extract libsodium
-          $libsodiumVersion = "1.0.18-stable"
-          $libsodiumUrl = "https://download.libsodium.org/libsodium/releases/libsodium-$libsodiumVersion-msvc.zip"
-          $libsodiumZip = "libsodium.zip"
-          $libsodiumDir = "libsodium"
-          
-          Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
-          Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDir
-          
-          # Create a pkg-config file for libsodium
-          $pkgConfigDir = "pkgconfig"
-          New-Item -ItemType Directory -Force -Path $pkgConfigDir
-          $pkgConfigContent = @"
-          prefix=$env:GITHUB_WORKSPACE\$libsodiumDir
-          exec_prefix=`${prefix}
-          libdir=`${exec_prefix}\x64\Release\v142\dynamic
-          includedir=`${prefix}\include
-          
-          Name: libsodium
-          Version: $libsodiumVersion
-          Description: A modern and easy-to-use crypto library
-          
-          Libs: -L`${libdir} -lsodium
-          Cflags: -I`${includedir}
-          "@
-          
-          $pkgConfigContent | Out-File -FilePath "$pkgConfigDir\libsodium.pc" -Encoding utf8
-          
-          # Set environment variables
-          echo "PKG_CONFIG_PATH=$env:GITHUB_WORKSPACE\$pkgConfigDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "SODIUM_LIB_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "SODIUM_INCLUDE_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "CGO_CFLAGS=-I$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "CGO_LDFLAGS=-L$env:GITHUB_WORKSPACE\$libsodiumDir\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "$env:GITHUB_WORKSPACE\$libsodiumDir\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        id: import_gpg
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          args: release --clean --snapshot
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+archives:
+  - format: zip
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+release:
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
+
+changelog:
+  disable: true
