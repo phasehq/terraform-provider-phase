@@ -47,6 +47,14 @@ jobs:
         echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        
+        # Create a pkg-config-like script
+        @"
+        #!/bin/sh
+        echo "-IC:/libsodium/include -LC:/libsodium/x64/Release/v142/dynamic -lsodium"
+        "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
+        
+        echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
     - name: Build
       run: |
@@ -54,6 +62,7 @@ jobs:
         if [[ "${{ runner.os }}" == "Windows" ]]; then
           export CGO_CFLAGS="-IC:/libsodium/include"
           export CGO_LDFLAGS="-LC:/libsodium/x64/Release/v142/dynamic -lsodium"
+          cp C:/libsodium/x64/Release/v142/dynamic/libsodium.dll C:/Windows/System32/
           go build -v -x ./...
         else
           go build -v ./...
@@ -98,6 +107,16 @@ jobs:
         echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        
+        # Create a pkg-config-like script
+        @"
+        #!/bin/sh
+        echo "-IC:/libsodium/include -LC:/libsodium/x64/Release/v142/dynamic -lsodium"
+        "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
+        
+        echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        
+        cp C:/libsodium/x64/Release/v142/dynamic/libsodium.dll C:/Windows/System32/
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
       id: import_gpg
