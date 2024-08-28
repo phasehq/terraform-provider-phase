@@ -45,13 +45,21 @@ jobs:
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
         echo "LIBSODIUM_PATH=$libsodiumDest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$libsodiumDest\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        echo "$libsodiumDest\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "CGO_CFLAGS=-IC:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "CGO_LDFLAGS=-LC:\libsodium\x64\Release\v142\dynamic -lsodium" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
-    - name: Build
+    - name: Build (non-Windows)
+      if: matrix.os != 'windows-latest'
       run: |
         go mod tidy
         go build -v ./...
+    
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        go mod tidy
+        go build -v -tags=dynamic ./...
     
     - name: Test
       run: go test -v ./...
@@ -89,8 +97,9 @@ jobs:
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
         echo "LIBSODIUM_PATH=$libsodiumDest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$libsodiumDest\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        echo "$libsodiumDest\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "CGO_CFLAGS=-IC:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "CGO_LDFLAGS=-LC:\libsodium\x64\Release\v142\dynamic -lsodium" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
       id: import_gpg
