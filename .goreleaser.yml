@@ -27,8 +27,7 @@ builds:
     goos:
       - darwin
     goarch:
-      - amd64
-      - arm64
+      - "{{ .Arch }}"
     flags:
       - -trimpath
     ldflags:
