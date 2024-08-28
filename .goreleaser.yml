@@ -1,7 +1,8 @@
-version: 2
+# GoReleaser configuration file (v1)
 before:
   hooks:
     - go mod tidy
+
 builds:
   - id: linux
     env:
@@ -72,4 +73,4 @@ release:
       name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
 
 changelog:
-  disable: true
+  skip: true
