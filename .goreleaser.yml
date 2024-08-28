@@ -4,56 +4,18 @@ before:
     - go mod tidy
 
 builds:
-  - id: linux
-    env:
+  - env:
       - CGO_ENABLED=1
     goos:
       - linux
+      - darwin
+      - windows
     goarch:
       - amd64
       - arm64
     ignore:
-      - goos: linux
-        goarch: arm
-    flags:
-      - -trimpath
-    ldflags:
-      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
-    binary: '{{ .ProjectName }}_v{{ .Version }}'
-
-  - id: darwin-amd64
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - darwin
-    goarch:
-      - amd64
-    flags:
-      - -trimpath
-    ldflags:
-      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
-    binary: '{{ .ProjectName }}_v{{ .Version }}'
-
-  - id: darwin-arm64
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - darwin
-    goarch:
-      - arm64
-    flags:
-      - -trimpath
-    ldflags:
-      - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
-    binary: '{{ .ProjectName }}_v{{ .Version }}'
-
-  - id: windows
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - windows
-    goarch:
-      - amd64
+      - goos: windows
+        goarch: arm64
     flags:
       - -trimpath
     ldflags:
