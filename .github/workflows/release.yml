@@ -30,7 +30,7 @@ jobs:
       - name: Install libsodium (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install libsodium
-      - name: Install libsodium (Windows)
+      - name: Install libsodium and setup pkg-config (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,7 +44,27 @@ jobs:
           Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
           Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDir
           
+          # Create a pkg-config file for libsodium
+          $pkgConfigDir = "pkgconfig"
+          New-Item -ItemType Directory -Force -Path $pkgConfigDir
+          $pkgConfigContent = @"
+          prefix=$env:GITHUB_WORKSPACE\$libsodiumDir
+          exec_prefix=`${prefix}
+          libdir=`${exec_prefix}\x64\Release\v142\dynamic
+          includedir=`${prefix}\include
+          
+          Name: libsodium
+          Version: $libsodiumVersion
+          Description: A modern and easy-to-use crypto library
+          
+          Libs: -L`${libdir} -lsodium
+          Cflags: -I`${includedir}
+          "@
+          
+          $pkgConfigContent | Out-File -FilePath "$pkgConfigDir\libsodium.pc" -Encoding utf8
+          
           # Set environment variables
+          echo "PKG_CONFIG_PATH=$env:GITHUB_WORKSPACE\$pkgConfigDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SODIUM_LIB_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SODIUM_INCLUDE_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "CGO_CFLAGS=-I$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -78,7 +98,7 @@ jobs:
       - name: Install libsodium (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install libsodium
-      - name: Install libsodium (Windows)
+      - name: Install libsodium and setup pkg-config (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           $ErrorActionPreference = 'Stop'
@@ -92,7 +112,27 @@ jobs:
           Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
           Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDir
           
+          # Create a pkg-config file for libsodium
+          $pkgConfigDir = "pkgconfig"
+          New-Item -ItemType Directory -Force -Path $pkgConfigDir
+          $pkgConfigContent = @"
+          prefix=$env:GITHUB_WORKSPACE\$libsodiumDir
+          exec_prefix=`${prefix}
+          libdir=`${exec_prefix}\x64\Release\v142\dynamic
+          includedir=`${prefix}\include
+          
+          Name: libsodium
+          Version: $libsodiumVersion
+          Description: A modern and easy-to-use crypto library
+          
+          Libs: -L`${libdir} -lsodium
+          Cflags: -I`${includedir}
+          "@
+          
+          $pkgConfigContent | Out-File -FilePath "$pkgConfigDir\libsodium.pc" -Encoding utf8
+          
           # Set environment variables
+          echo "PKG_CONFIG_PATH=$env:GITHUB_WORKSPACE\$pkgConfigDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SODIUM_LIB_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "SODIUM_INCLUDE_DIR=$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "CGO_CFLAGS=-I$env:GITHUB_WORKSPACE\$libsodiumDir\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
