@@ -33,19 +33,20 @@ jobs:
       if: matrix.os == 'macos-latest'
       run: brew install libsodium
     
-    - name: Install vcpkg
-      if: matrix.os == 'windows-latest'
-      uses: lukka/run-vcpkg@v7
-      with:
-        vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
-    
     - name: Install libsodium (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        vcpkg install libsodium:x64-windows-static
-        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static\lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        $libsodiumVersion = "1.0.20"
+        $libsodiumZip = "libsodium-${libsodiumVersion}-msvc.zip"
+        $libsodiumUrl = "https://github.com/jedisct1/libsodium/releases/download/${libsodiumVersion}-RELEASE/${libsodiumZip}"
+        $libsodiumDest = "C:\libsodium"
+        
+        Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
+        Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
+        
+        echo "LIBSODIUM_PATH=$libsodiumDest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "$libsodiumDest\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "$libsodiumDest\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
     - name: Build
       run: |
@@ -76,18 +77,20 @@ jobs:
     - name: Install libsodium (macOS)
       if: matrix.os == 'macos-latest'
       run: brew install libsodium
-    - name: Install vcpkg
-      if: matrix.os == 'windows-latest'
-      uses: lukka/run-vcpkg@v7
-      with:
-        vcpkgGitCommitId: 'a7b6122f6b6504d16d96117336a0562693579933'
     - name: Install libsodium (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        vcpkg install libsodium:x64-windows-static
-        echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static\lib" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        $libsodiumVersion = "1.0.20"
+        $libsodiumZip = "libsodium-${libsodiumVersion}-msvc.zip"
+        $libsodiumUrl = "https://github.com/jedisct1/libsodium/releases/download/${libsodiumVersion}-RELEASE/${libsodiumZip}"
+        $libsodiumDest = "C:\libsodium"
+        
+        Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
+        Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
+        
+        echo "LIBSODIUM_PATH=$libsodiumDest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "$libsodiumDest\include" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "$libsodiumDest\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
       id: import_gpg
