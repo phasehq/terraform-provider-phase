@@ -44,21 +44,27 @@ jobs:
         Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
-        # Find the correct paths
-        $includeDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "sodium.h" | Select-Object -ExpandProperty DirectoryName
-        $libDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "libsodium.dll" | Select-Object -ExpandProperty DirectoryName
+        $includeDir = "C:\libsodium\libsodium\include"
+        $possibleLibDirs = @(
+          "C:\libsodium\libsodium\x64\Release\v142\dynamic",
+          "C:\libsodium\libsodium\x64\Release\v143\dynamic",
+          "C:\libsodium\libsodium\Win32\Release\v142\dynamic",
+          "C:\libsodium\libsodium\Win32\Release\v143\dynamic"
+        )
+        
+        $libDir = $possibleLibDirs | Where-Object { Test-Path "$_\libsodium.dll" } | Select-Object -First 1
+        
+        if (-not $libDir) {
+          Write-Error "Could not find libsodium.dll in any of the expected locations"
+          exit 1
+        }
         
         echo "SODIUM_INCLUDE_DIR=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_LIB_DIR=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
-        # Create a pkg-config-like script
-        @"
-        #!/bin/sh
-        echo "-I$includeDir -L$libDir -lsodium"
-        "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
-        
-        echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        Copy-Item "$libDir\libsodium.dll" -Destination "C:\Windows\System32\"
+      shell: pwsh
     
     - name: Build
       run: |
@@ -66,7 +72,6 @@ jobs:
         if [[ "${{ runner.os }}" == "Windows" ]]; then
           export CGO_CFLAGS="-I${{ env.SODIUM_INCLUDE_DIR }}"
           export CGO_LDFLAGS="-L${{ env.SODIUM_LIB_DIR }} -lsodium"
-          cp "${{ env.SODIUM_LIB_DIR }}/libsodium.dll" "C:/Windows/System32/"
           go build -v -x ./...
         else
           go build -v ./...
@@ -108,23 +113,27 @@ jobs:
         Invoke-WebRequest -Uri $libsodiumUrl -OutFile $libsodiumZip
         Expand-Archive -Path $libsodiumZip -DestinationPath $libsodiumDest
         
-        # Find the correct paths
-        $includeDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "sodium.h" | Select-Object -ExpandProperty DirectoryName
-        $libDir = Get-ChildItem -Path $libsodiumDest -Recurse -Filter "libsodium.dll" | Select-Object -ExpandProperty DirectoryName
+        $includeDir = "C:\libsodium\libsodium\include"
+        $possibleLibDirs = @(
+          "C:\libsodium\libsodium\x64\Release\v142\dynamic",
+          "C:\libsodium\libsodium\x64\Release\v143\dynamic",
+          "C:\libsodium\libsodium\Win32\Release\v142\dynamic",
+          "C:\libsodium\libsodium\Win32\Release\v143\dynamic"
+        )
+        
+        $libDir = $possibleLibDirs | Where-Object { Test-Path "$_\libsodium.dll" } | Select-Object -First 1
+        
+        if (-not $libDir) {
+          Write-Error "Could not find libsodium.dll in any of the expected locations"
+          exit 1
+        }
         
         echo "SODIUM_INCLUDE_DIR=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_LIB_DIR=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "$libDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
-        # Create a pkg-config-like script
-        @"
-        #!/bin/sh
-        echo "-I$includeDir -L$libDir -lsodium"
-        "@ | Out-File -FilePath "C:\Windows\pkg-config.bat" -Encoding ascii
-        
-        echo "C:\Windows" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        
-        cp "$libDir/libsodium.dll" "C:/Windows/System32/"
+        Copy-Item "$libDir\libsodium.dll" -Destination "C:\Windows\System32\"
+      shell: pwsh
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
       id: import_gpg
