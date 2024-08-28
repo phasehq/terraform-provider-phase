@@ -46,16 +46,14 @@ jobs:
         
         echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "CGO_CFLAGS=-IC:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "CGO_LDFLAGS=-LC:\libsodium\x64\Release\v142\dynamic -lsodium" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     
     - name: Build
       run: |
         go mod tidy
-        if [ "${{ runner.os }}" == "Windows" ]; then
-          $env:CGO_CFLAGS="-IC:\libsodium\include"
-          $env:CGO_LDFLAGS="-LC:\libsodium\x64\Release\v142\dynamic -lsodium"
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          export CGO_CFLAGS="-IC:/libsodium/include"
+          export CGO_LDFLAGS="-LC:/libsodium/x64/Release/v142/dynamic -lsodium"
           go build -v -x ./...
         else
           go build -v ./...
@@ -99,8 +97,6 @@ jobs:
         
         echo "SODIUM_LIB_DIR=C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "SODIUM_INCLUDE_DIR=C:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "CGO_CFLAGS=-IC:\libsodium\include" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "CGO_LDFLAGS=-LC:\libsodium\x64\Release\v142\dynamic -lsodium" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         echo "C:\libsodium\x64\Release\v142\dynamic" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
     - name: Import GPG key
       uses: crazy-max/ghaction-import-gpg@v6
@@ -115,5 +111,5 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-        CGO_CFLAGS: -IC:\libsodium\include
-        CGO_LDFLAGS: -LC:\libsodium\x64\Release\v142\dynamic -lsodium
+        CGO_CFLAGS: -IC:/libsodium/include
+        CGO_LDFLAGS: -LC:/libsodium/x64/Release/v142/dynamic -lsodium
