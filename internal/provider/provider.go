@@ -11,37 +11,41 @@ import (
 )
 
 func Provider() *schema.Provider {
-    return &schema.Provider{
-        Schema: map[string]*schema.Schema{
-            "host": {
-                Type:        schema.TypeString,
-                Optional:    true,
-                DefaultFunc: schema.EnvDefaultFunc("PHASE_HOST", DefaultHostURL),
-                Description: "The host URL for the Phase API. Can be set with PHASE_HOST environment variable.",
-            },
-            "service_token": {
-                Type:        schema.TypeString,
-                Required:    true,
-                Sensitive:   true,
-                DefaultFunc: schema.EnvDefaultFunc("PHASE_SERVICE_TOKEN", nil),
-                Description: "The service token for authenticating with Phase. Can be set with PHASE_SERVICE_TOKEN environment variable.",
-            },
-        },
-        ResourcesMap: map[string]*schema.Resource{
+	return &schema.Provider{
+		Schema: map[string]*schema.Schema{
+			"host": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("PHASE_HOST", DefaultHostURL),
+				Description: "The host URL for the Phase API. Can be set with PHASE_HOST environment variable.",
+			},
+			"phase_token": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Sensitive:   true,
+				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PHASE_TOKEN", "PHASE_SERVICE_TOKEN", "PHASE_PAT_TOKEN"}, nil),
+				Description: "The token for authenticating with Phase. Can be a service token or a personal access token (PAT). Can be set with PHASE_TOKEN, PHASE_SERVICE_TOKEN, or PHASE_PAT_TOKEN environment variables.",
+			},
+		},
+		ResourcesMap: map[string]*schema.Resource{
             "phase_secret": resourceSecret(),
-        },
-        DataSourcesMap: map[string]*schema.Resource{
-            "phase_secrets": dataSourceSecrets(),
-        },
-        ConfigureContextFunc: providerConfigure,
-    }
+		},
+		DataSourcesMap: map[string]*schema.Resource{
+			"phase_secrets": dataSourceSecrets(),
+		},
+		ConfigureContextFunc: providerConfigure,
+	}
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	host := d.Get("host").(string)
-	serviceToken := d.Get("service_token").(string)
+    phaseToken := d.Get("phase_token").(string)
+    host := d.Get("host").(string)
 
-	tokenType, bearerToken := extractTokenInfo(serviceToken)
+    if host != DefaultHostURL {
+        host = fmt.Sprintf("%s/service/public", host)
+    }
+
+	tokenType, bearerToken := extractTokenInfo(phaseToken)
 
 	client := &PhaseClient{
 		HostURL:    host,
@@ -53,19 +57,19 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	return client, nil
 }
 
-func extractTokenInfo(serviceToken string) (string, string) {
-	if PssUserPattern.MatchString(serviceToken) {
-		parts := strings.Split(serviceToken, ":")
+func extractTokenInfo(phaseToken string) (string, string) {
+	if PssUserPattern.MatchString(phaseToken) {
+		parts := strings.Split(phaseToken, ":")
 		if len(parts) >= 3 {
 			return "User", parts[2]
 		}
-	} else if PssServicePattern.MatchString(serviceToken) {
-		parts := strings.Split(serviceToken, ":")
+	} else if PssServicePattern.MatchString(phaseToken) {
+		parts := strings.Split(phaseToken, ":")
 		if len(parts) >= 3 {
 			return "Service", parts[2]
 		}
 	}
-	return "", serviceToken // Default to empty token type if no match
+	return "", phaseToken // Default to empty token type if no match
 }
 
 func resourceSecret() *schema.Resource {
