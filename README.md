@@ -7,31 +7,44 @@ This Terraform provider allows you to manage secrets in Phase from your Terrafor
 To use the latest version of the provider in your Terraform configuration, add the following terraform block:
 
 ```hcl
-// Import
 terraform {
   required_providers {
     phase = {
       source  = "phasehq/phase"
-      version = "~> 0.1.0"
+      version = "0.1.0" // replace with latest version
     }
   }
 }
 
-
-// Initialize
+# Configure the Phase Provider
 provider "phase" {
-  service_token = "pss_service:v1:..."
+  phase_token = "pss_service:v1:..." # or "pss_user:v1:..." // A Phase Service Token or a Phase User Token (PAT)
 }
 
-// Fetch secrets
-data "phase_secrets" "starlink-command" {
-  env = "Production"
-  application_id = "b6ad8824-7133-4839-8013-f87c2182fc61"
-  path = "/"
+# Retrieve all secrets under a specific path
+data "phase_secrets" "all" {
+  env    = "development"
+  app_id = "your-app-id"
+  path   = "/"
 }
 
-output "secrets" {
-  value = data.phase_secrets.starlink-command.secrets
+# Retrieve a specific secret
+data "phase_secrets" "single" {
+  env    = "development"
+  app_id = "your-app-id"
+  path   = "/specific/path"
+  key    = "SPECIFIC_SECRET_KEY"
+}
+
+// Fetch all secrets
+# Use secrets
+output "all_secret_keys" {
+  value = keys(data.phase_secrets.all.secrets)
+}
+
+// Single secret retrieval 
+output "specific_secret" {
+  value     = data.phase_secrets.single.secrets["SPECIFIC_SECRET_KEY"]
   sensitive = true
 }
 ```
