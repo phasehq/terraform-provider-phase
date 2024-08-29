@@ -1,6 +1,10 @@
 package provider
 
-import "net/http"
+import (
+	"net/http"
+	"regexp"
+)
+
 
 const (
 	// Version of the provider
@@ -18,6 +22,7 @@ type PhaseClient struct {
 	HostURL    string
 	HTTPClient *http.Client
 	Token      string
+	TokenType  string
 }
 
 // Secret represents a secret in the Phase API
@@ -29,3 +34,10 @@ type Secret struct {
 	Tags    []string `json:"tags,omitempty"`
 	Path    string   `json:"path,omitempty"`
 }
+
+var (
+	// Compiled regex patterns
+	PssUserPattern    = regexp.MustCompile(`^pss_user:v(\d+):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64})$`)
+	PssServicePattern = regexp.MustCompile(`^pss_service:v(\d+):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64})$`)
+
+)
