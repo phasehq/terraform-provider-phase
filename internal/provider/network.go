@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -39,7 +39,10 @@ func (c *PhaseClient) CreateSecret(appID, env, tokenType string, secret Secret) 
 	}
 	defer resp.Body.Close()
 
-	responseBody, _ := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to create secret: %s", resp.Status)
@@ -75,7 +78,10 @@ func (c *PhaseClient) ReadSecret(appID, env, secretID, tokenType string) (*Secre
 	}
 	defer resp.Body.Close()
 
-	responseBody, _ := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to read secret: %s", resp.Status)
@@ -118,7 +124,10 @@ func (c *PhaseClient) UpdateSecret(appID, env, tokenType string, secret Secret) 
 	}
 	defer resp.Body.Close()
 
-	responseBody, _ := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to update secret: %s", resp.Status)
@@ -185,7 +194,10 @@ func (c *PhaseClient) ListSecrets(appID, env, path, tokenType string) ([]Secret,
 	}
 	defer resp.Body.Close()
 
-	responseBody, _ := ioutil.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to list secrets: %s", resp.Status)
