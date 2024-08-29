@@ -1,0 +1,5 @@
+.terraform/providers/registry.terraform.io/phasehq/phase/1.0.0/linux_amd64
+terraform.tfstate
+terraform-provider
+.terraform.lock.hcl
+terraform-provider-phase
