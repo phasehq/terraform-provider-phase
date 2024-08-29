@@ -6,13 +6,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/user"
+	"runtime"
+	"strings"
 )
 
 // setHeaders sets the common headers for all requests
 func (c *PhaseClient) setHeaders(req *http.Request, tokenType string) {
+	osType := runtime.GOOS
+	architecture := runtime.GOARCH
+	
+	details := []string{fmt.Sprintf("%s %s", osType, architecture)}
+
+	currentUser, err := user.Current()
+	if err == nil {
+		hostname, err := os.Hostname()
+		if err == nil {
+			userHostString := fmt.Sprintf("%s@%s", currentUser.Username, hostname)
+			details = append(details, userHostString)
+		}
+	}
+
+	userAgent := fmt.Sprintf("%s (%s)", UserAgent, strings.Join(details, "; "))
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("%s %s", tokenType, c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("User-Agent", userAgent)
 }
 
 // CreateSecret creates a new secret
