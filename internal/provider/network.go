@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
 )
 
 // CreateSecret creates a new secret
-func (c *PhaseClient) CreateSecret(appID, env string, secret Secret) (*Secret, error) {
+func (c *PhaseClient) CreateSecret(appID, env, tokenType string, secret Secret) (*Secret, error) {
+	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s", c.HostURL, appID, env)
+	log.Printf("[DEBUG] Creating secret. URL: %s", url)
+
 	body, err := json.Marshal(map[string]interface{}{
 		"secrets": []Secret{secret},
 	})
@@ -16,14 +21,13 @@ func (c *PhaseClient) CreateSecret(appID, env string, secret Secret) (*Secret, e
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/v1/secrets?app_id=%s&env=%s", c.HostURL, appID, env), bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	c.setHeaders(req, tokenType)
+	log.Printf("[DEBUG] Request headers: %v", req.Header)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -31,12 +35,15 @@ func (c *PhaseClient) CreateSecret(appID, env string, secret Secret) (*Secret, e
 	}
 	defer resp.Body.Close()
 
+	responseBody, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("[DEBUG] Response status: %s, body: %s", resp.Status, string(responseBody))
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to create secret: %s", resp.Status)
 	}
 
 	var createdSecrets []Secret
-	err = json.NewDecoder(resp.Body).Decode(&createdSecrets)
+	err = json.Unmarshal(responseBody, &createdSecrets)
 	if err != nil {
 		return nil, err
 	}
@@ -49,14 +56,17 @@ func (c *PhaseClient) CreateSecret(appID, env string, secret Secret) (*Secret, e
 }
 
 // ReadSecret reads a secret by its ID
-func (c *PhaseClient) ReadSecret(appID, env, secretID string) (*Secret, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/secrets?app_id=%s&env=%s&id=%s", c.HostURL, appID, env, secretID), nil)
+func (c *PhaseClient) ReadSecret(appID, env, secretID, tokenType string) (*Secret, error) {
+	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&id=%s", c.HostURL, appID, env, secretID)
+	log.Printf("[DEBUG] Reading secret. URL: %s", url)
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	c.setHeaders(req, tokenType)
+	log.Printf("[DEBUG] Request headers: %v", req.Header)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -64,12 +74,15 @@ func (c *PhaseClient) ReadSecret(appID, env, secretID string) (*Secret, error) {
 	}
 	defer resp.Body.Close()
 
+	responseBody, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("[DEBUG] Response status: %s, body: %s", resp.Status, string(responseBody))
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to read secret: %s", resp.Status)
 	}
 
 	var secrets []Secret
-	err = json.NewDecoder(resp.Body).Decode(&secrets)
+	err = json.Unmarshal(responseBody, &secrets)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +95,10 @@ func (c *PhaseClient) ReadSecret(appID, env, secretID string) (*Secret, error) {
 }
 
 // UpdateSecret updates an existing secret
-func (c *PhaseClient) UpdateSecret(appID, env string, secret Secret) (*Secret, error) {
+func (c *PhaseClient) UpdateSecret(appID, env, tokenType string, secret Secret) (*Secret, error) {
+	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s", c.HostURL, appID, env)
+	log.Printf("[DEBUG] Updating secret. URL: %s", url)
+
 	body, err := json.Marshal(map[string]interface{}{
 		"secrets": []Secret{secret},
 	})
@@ -90,14 +106,13 @@ func (c *PhaseClient) UpdateSecret(appID, env string, secret Secret) (*Secret, e
 		return nil, err
 	}
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/v1/secrets?app_id=%s&env=%s", c.HostURL, appID, env), bytes.NewBuffer(body))
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	c.setHeaders(req, tokenType)
+	log.Printf("[DEBUG] Request headers: %v", req.Header)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -105,12 +120,15 @@ func (c *PhaseClient) UpdateSecret(appID, env string, secret Secret) (*Secret, e
 	}
 	defer resp.Body.Close()
 
+	responseBody, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("[DEBUG] Response status: %s, body: %s", resp.Status, string(responseBody))
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to update secret: %s", resp.Status)
 	}
 
 	var updatedSecrets []Secret
-	err = json.NewDecoder(resp.Body).Decode(&updatedSecrets)
+	err = json.Unmarshal(responseBody, &updatedSecrets)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +141,10 @@ func (c *PhaseClient) UpdateSecret(appID, env string, secret Secret) (*Secret, e
 }
 
 // DeleteSecret deletes a secret by its ID
-func (c *PhaseClient) DeleteSecret(appID, env, secretID string) error {
+func (c *PhaseClient) DeleteSecret(appID, env, secretID, tokenType string) error {
+	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s", c.HostURL, appID, env)
+	log.Printf("[DEBUG] Deleting secret. URL: %s", url)
+
 	body, err := json.Marshal(map[string]interface{}{
 		"secrets": []string{secretID},
 	})
@@ -131,20 +152,22 @@ func (c *PhaseClient) DeleteSecret(appID, env, secretID string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/v1/secrets?app_id=%s&env=%s", c.HostURL, appID, env), bytes.NewBuffer(body))
+	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	c.setHeaders(req, tokenType)
+	log.Printf("[DEBUG] Request headers: %v", req.Header)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	responseBody, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("[DEBUG] Response status: %s, body: %s", resp.Status, string(responseBody))
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to delete secret: %s", resp.Status)
@@ -154,14 +177,17 @@ func (c *PhaseClient) DeleteSecret(appID, env, secretID string) error {
 }
 
 // ListSecrets lists all secrets for a given app, environment, and path
-func (c *PhaseClient) ListSecrets(appID, env, path string) ([]Secret, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/secrets?app_id=%s&env=%s&path=%s", c.HostURL, appID, env, path), nil)
+func (c *PhaseClient) ListSecrets(appID, env, path, tokenType string) ([]Secret, error) {
+	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&path=%s", c.HostURL, appID, env, path)
+	log.Printf("[DEBUG] Listing secrets. URL: %s", url)
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
-	req.Header.Set("User-Agent", UserAgent)
+	c.setHeaders(req, tokenType)
+	log.Printf("[DEBUG] Request headers: %v", req.Header)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -169,15 +195,25 @@ func (c *PhaseClient) ListSecrets(appID, env, path string) ([]Secret, error) {
 	}
 	defer resp.Body.Close()
 
+	responseBody, _ := ioutil.ReadAll(resp.Body)
+	log.Printf("[DEBUG] Response status: %s, body: %s", resp.Status, string(responseBody))
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to list secrets: %s", resp.Status)
 	}
 
 	var secrets []Secret
-	err = json.NewDecoder(resp.Body).Decode(&secrets)
+	err = json.Unmarshal(responseBody, &secrets)
 	if err != nil {
 		return nil, err
 	}
 
 	return secrets, nil
+}
+
+// setHeaders sets the common headers for all requests
+func (c *PhaseClient) setHeaders(req *http.Request, tokenType string) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("%s %s", tokenType, c.Token))
+	req.Header.Set("User-Agent", UserAgent)
 }

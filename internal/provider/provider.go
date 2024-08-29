@@ -38,161 +38,169 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-    host := d.Get("host").(string)
-    serviceToken := d.Get("service_token").(string)
+	host := d.Get("host").(string)
+	serviceToken := d.Get("service_token").(string)
 
-    bearerToken := extractBearerToken(serviceToken)
+	tokenType, bearerToken := extractTokenInfo(serviceToken)
 
-    client := &PhaseClient{
-        HostURL:    host,
-        HTTPClient: &http.Client{},
-        Token:      bearerToken,
-    }
+	client := &PhaseClient{
+		HostURL:    host,
+		HTTPClient: &http.Client{},
+		Token:      bearerToken,
+		TokenType:  tokenType,
+	}
 
-    return client, nil
+	return client, nil
 }
 
-func extractBearerToken(serviceToken string) string {
-    parts := strings.Split(serviceToken, ":")
-    if len(parts) >= 3 {
-        return parts[2]
-    }
-    return ""
+func extractTokenInfo(serviceToken string) (string, string) {
+	if PssUserPattern.MatchString(serviceToken) {
+		parts := strings.Split(serviceToken, ":")
+		if len(parts) >= 3 {
+			return "User", parts[2]
+		}
+	} else if PssServicePattern.MatchString(serviceToken) {
+		parts := strings.Split(serviceToken, ":")
+		if len(parts) >= 3 {
+			return "Service", parts[2]
+		}
+	}
+	return "", serviceToken // Default to empty token type if no match
 }
 
 func resourceSecret() *schema.Resource {
-    return &schema.Resource{
-        CreateContext: resourceSecretCreate,
-        ReadContext:   resourceSecretRead,
-        UpdateContext: resourceSecretUpdate,
-        DeleteContext: resourceSecretDelete,
+	return &schema.Resource{
+		CreateContext: resourceSecretCreate,
+		ReadContext:   resourceSecretRead,
+		UpdateContext: resourceSecretUpdate,
+		DeleteContext: resourceSecretDelete,
 
-        Schema: map[string]*schema.Schema{
-            "application_id": {
-                Type:     schema.TypeString,
-                Required: true,
-                ForceNew: true,
-            },
-            "env": {
-                Type:     schema.TypeString,
-                Required: true,
-                ForceNew: true,
-            },
-            "key": {
-                Type:     schema.TypeString,
-                Required: true,
-            },
-            "value": {
-                Type:      schema.TypeString,
-                Required:  true,
-                Sensitive: true,
-            },
-            "comment": {
-                Type:     schema.TypeString,
-                Optional: true,
-            },
-            "tags": {
-                Type:     schema.TypeSet,
-                Optional: true,
-                Elem:     &schema.Schema{Type: schema.TypeString},
-            },
-            "path": {
-                Type:     schema.TypeString,
-                Optional: true,
-                Default:  "/",
-            },
-        },
-    }
+		Schema: map[string]*schema.Schema{
+			"app_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"env": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"key": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
+			"value": {
+				Type:      schema.TypeString,
+				Required:  true,
+				Sensitive: true,
+			},
+			"comment": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"tags": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+			"path": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "/",
+			},
+		},
+	}
 }
 
 func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    secret := Secret{
-        Key:     d.Get("key").(string),
-        Value:   d.Get("value").(string),
-        Comment: d.Get("comment").(string),
-        Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
-        Path:    d.Get("path").(string),
-    }
+	secret := Secret{
+		Key:     d.Get("key").(string),
+		Value:   d.Get("value").(string),
+		Comment: d.Get("comment").(string),
+		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
+		Path:    d.Get("path").(string),
+	}
 
-    appID := d.Get("application_id").(string)
-    env := d.Get("env").(string)
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
 
-    createdSecret, err := client.CreateSecret(appID, env, secret)
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	createdSecret, err := client.CreateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    d.SetId(createdSecret.ID)
-    return resourceSecretRead(ctx, d, meta)
+	d.SetId(createdSecret.ID)
+	return resourceSecretRead(ctx, d, meta)
 }
 
 func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    appID := d.Get("application_id").(string)
-    env := d.Get("env").(string)
-    secretID := d.Id()
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
+	secretID := d.Id()
 
-    secret, err := client.ReadSecret(appID, env, secretID)
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	secret, err := client.ReadSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    d.Set("key", secret.Key)
-    d.Set("value", secret.Value)
-    d.Set("comment", secret.Comment)
-    d.Set("tags", secret.Tags)
-    d.Set("path", secret.Path)
+	d.Set("key", secret.Key)
+	d.Set("value", secret.Value)
+	d.Set("comment", secret.Comment)
+	d.Set("tags", secret.Tags)
+	d.Set("path", secret.Path)
 
-    return nil
+	return nil
 }
 
 func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    secret := Secret{
-        ID:      d.Id(),
-        Key:     d.Get("key").(string),
-        Value:   d.Get("value").(string),
-        Comment: d.Get("comment").(string),
-        Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
-        Path:    d.Get("path").(string),
-    }
+	secret := Secret{
+		ID:      d.Id(),
+		Key:     d.Get("key").(string),
+		Value:   d.Get("value").(string),
+		Comment: d.Get("comment").(string),
+		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
+		Path:    d.Get("path").(string),
+	}
 
-    appID := d.Get("application_id").(string)
-    env := d.Get("env").(string)
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
 
-    _, err := client.UpdateSecret(appID, env, secret)
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	_, err := client.UpdateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    return resourceSecretRead(ctx, d, meta)
+	return resourceSecretRead(ctx, d, meta)
 }
 
 func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    appID := d.Get("application_id").(string)
-    env := d.Get("env").(string)
-    secretID := d.Id()
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
+	secretID := d.Id()
 
-    err := client.DeleteSecret(appID, env, secretID)
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	err := client.DeleteSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    d.SetId("")
-    return nil
+	d.SetId("")
+	return nil
 }
 
 func dataSourceSecrets() *schema.Resource {
     return &schema.Resource{
         ReadContext: dataSourceSecretsRead,
         Schema: map[string]*schema.Schema{
-            "application_id": {
+            "app_id": {
                 Type:        schema.TypeString,
                 Required:    true,
                 Description: "The ID of the Phase App.",
@@ -249,11 +257,11 @@ func dataSourceSecrets() *schema.Resource {
 func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
     client := meta.(*PhaseClient)
 
-    appID := d.Get("application_id").(string)
+    appID := d.Get("app_id").(string)
     env := d.Get("env").(string)
     path := d.Get("path").(string)
 
-    secrets, err := client.ListSecrets(appID, env, path)
+    secrets, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
     if err != nil {
         return diag.FromErr(err)
     }
