@@ -3,144 +3,291 @@ package provider
 import (
 	"context"
 	"fmt"
-	"runtime"
+	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/phasehq/golang-sdk/phase"
-	"github.com/phasehq/golang-sdk/phase/misc"
-	"github.com/phasehq/golang-sdk/phase/network"
 )
 
-// Version of the provider
-const Version = "0.1.0"
-
 func Provider() *schema.Provider {
-	return &schema.Provider{
-		Schema: map[string]*schema.Schema{
-			"host": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("PHASE_HOST", "https://console.phase.dev"),
-				Description: "The host URL for the Phase API. Can be set with PHASE_HOST environment variable. Defaults to Phase Cloud - https://console.phase.dev if not set.",
-			},
-			"service_token": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Sensitive:   true,
-				DefaultFunc: schema.EnvDefaultFunc("PHASE_SERVICE_TOKEN", nil),
-				Description: "The service token for authenticating with Phase. Can be set with PHASE_SERVICE_TOKEN environment variable.",
-			},
-		},
-		DataSourcesMap: map[string]*schema.Resource{
-			"phase_secrets": dataSourceSecrets(),
-		},
-		ConfigureContextFunc: providerConfigure,
-	}
+    return &schema.Provider{
+        Schema: map[string]*schema.Schema{
+            "host": {
+                Type:        schema.TypeString,
+                Optional:    true,
+                DefaultFunc: schema.EnvDefaultFunc("PHASE_HOST", DefaultHostURL),
+                Description: "The host URL for the Phase API. Can be set with PHASE_HOST environment variable.",
+            },
+            "service_token": {
+                Type:        schema.TypeString,
+                Required:    true,
+                Sensitive:   true,
+                DefaultFunc: schema.EnvDefaultFunc("PHASE_SERVICE_TOKEN", nil),
+                Description: "The service token for authenticating with Phase. Can be set with PHASE_SERVICE_TOKEN environment variable.",
+            },
+        },
+        ResourcesMap: map[string]*schema.Resource{
+            "phase_secret": resourceSecret(),
+        },
+        DataSourcesMap: map[string]*schema.Resource{
+            "phase_secrets": dataSourceSecrets(),
+        },
+        ConfigureContextFunc: providerConfigure,
+    }
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	host := d.Get("host").(string)
-	serviceToken := d.Get("service_token").(string)
+    host := d.Get("host").(string)
+    serviceToken := d.Get("service_token").(string)
 
-	// Set the user agent for the SDK
-	userAgent := fmt.Sprintf("terraform-provider-phase/%s phase-golang-sdk/%s (%s/%s)",
-		Version,
-		misc.Version,
-		runtime.GOOS,
-		runtime.GOARCH)
-	network.SetUserAgent(userAgent)
+    bearerToken := extractBearerToken(serviceToken)
 
-	// Initialize the Phase client
-	client := phase.Init(serviceToken, host, false)
-	if client == nil {
-		return nil, diag.Errorf("Failed to initialize Phase client")
-	}
+    client := &PhaseClient{
+        HostURL:    host,
+        HTTPClient: &http.Client{},
+        Token:      bearerToken,
+    }
 
-	return client, nil
+    return client, nil
+}
+
+func extractBearerToken(serviceToken string) string {
+    parts := strings.Split(serviceToken, ":")
+    if len(parts) >= 3 {
+        return parts[2]
+    }
+    return ""
+}
+
+func resourceSecret() *schema.Resource {
+    return &schema.Resource{
+        CreateContext: resourceSecretCreate,
+        ReadContext:   resourceSecretRead,
+        UpdateContext: resourceSecretUpdate,
+        DeleteContext: resourceSecretDelete,
+
+        Schema: map[string]*schema.Schema{
+            "application_id": {
+                Type:     schema.TypeString,
+                Required: true,
+                ForceNew: true,
+            },
+            "env": {
+                Type:     schema.TypeString,
+                Required: true,
+                ForceNew: true,
+            },
+            "key": {
+                Type:     schema.TypeString,
+                Required: true,
+            },
+            "value": {
+                Type:      schema.TypeString,
+                Required:  true,
+                Sensitive: true,
+            },
+            "comment": {
+                Type:     schema.TypeString,
+                Optional: true,
+            },
+            "tags": {
+                Type:     schema.TypeSet,
+                Optional: true,
+                Elem:     &schema.Schema{Type: schema.TypeString},
+            },
+            "path": {
+                Type:     schema.TypeString,
+                Optional: true,
+                Default:  "/",
+            },
+        },
+    }
+}
+
+func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    client := meta.(*PhaseClient)
+
+    secret := Secret{
+        Key:     d.Get("key").(string),
+        Value:   d.Get("value").(string),
+        Comment: d.Get("comment").(string),
+        Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
+        Path:    d.Get("path").(string),
+    }
+
+    appID := d.Get("application_id").(string)
+    env := d.Get("env").(string)
+
+    createdSecret, err := client.CreateSecret(appID, env, secret)
+    if err != nil {
+        return diag.FromErr(err)
+    }
+
+    d.SetId(createdSecret.ID)
+    return resourceSecretRead(ctx, d, meta)
+}
+
+func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    client := meta.(*PhaseClient)
+
+    appID := d.Get("application_id").(string)
+    env := d.Get("env").(string)
+    secretID := d.Id()
+
+    secret, err := client.ReadSecret(appID, env, secretID)
+    if err != nil {
+        return diag.FromErr(err)
+    }
+
+    d.Set("key", secret.Key)
+    d.Set("value", secret.Value)
+    d.Set("comment", secret.Comment)
+    d.Set("tags", secret.Tags)
+    d.Set("path", secret.Path)
+
+    return nil
+}
+
+func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    client := meta.(*PhaseClient)
+
+    secret := Secret{
+        ID:      d.Id(),
+        Key:     d.Get("key").(string),
+        Value:   d.Get("value").(string),
+        Comment: d.Get("comment").(string),
+        Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
+        Path:    d.Get("path").(string),
+    }
+
+    appID := d.Get("application_id").(string)
+    env := d.Get("env").(string)
+
+    _, err := client.UpdateSecret(appID, env, secret)
+    if err != nil {
+        return diag.FromErr(err)
+    }
+
+    return resourceSecretRead(ctx, d, meta)
+}
+
+func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    client := meta.(*PhaseClient)
+
+    appID := d.Get("application_id").(string)
+    env := d.Get("env").(string)
+    secretID := d.Id()
+
+    err := client.DeleteSecret(appID, env, secretID)
+    if err != nil {
+        return diag.FromErr(err)
+    }
+
+    d.SetId("")
+    return nil
 }
 
 func dataSourceSecrets() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceSecretsRead,
-		Schema: map[string]*schema.Schema{
-			"env": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The environment name.",
-			},
-			"application_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "The application ID. This takes precedence over application_name if both are provided.",
-			},
-			"application_name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "The application name. Only used if application_id is not provided.",
-			},
-			"path": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     "/",
-				Description: "The path to fetch secrets from.",
-			},
-			"secrets": {
-				Type:        schema.TypeMap,
-				Computed:    true,
-				Sensitive:   true,
-				Description: "The map of fetched secrets.",
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-			},
-		},
-	}
+    return &schema.Resource{
+        ReadContext: dataSourceSecretsRead,
+        Schema: map[string]*schema.Schema{
+            "application_id": {
+                Type:        schema.TypeString,
+                Required:    true,
+                Description: "The ID of the Phase App.",
+            },
+            "env": {
+                Type:        schema.TypeString,
+                Required:    true,
+                Description: "The environment name.",
+            },
+            "path": {
+                Type:        schema.TypeString,
+                Optional:    true,
+                Default:     "/",
+                Description: "The path to fetch secrets from.",
+            },
+            "secrets": {
+                Type:     schema.TypeList,
+                Computed: true,
+                Elem: &schema.Resource{
+                    Schema: map[string]*schema.Schema{
+                        "id": {
+                            Type:     schema.TypeString,
+                            Computed: true,
+                        },
+                        "key": {
+                            Type:     schema.TypeString,
+                            Computed: true,
+                        },
+                        "value": {
+                            Type:      schema.TypeString,
+                            Computed:  true,
+                            Sensitive: true,
+                        },
+                        "comment": {
+                            Type:     schema.TypeString,
+                            Computed: true,
+                        },
+                        "tags": {
+                            Type:     schema.TypeList,
+                            Computed: true,
+                            Elem:     &schema.Schema{Type: schema.TypeString},
+                        },
+                        "path": {
+                            Type:     schema.TypeString,
+                            Computed: true,
+                        },
+                    },
+                },
+            },
+        },
+    }
 }
 
 func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(*phase.Phase)
+    client := meta.(*PhaseClient)
 
-	env := d.Get("env").(string)
-	appID := d.Get("application_id").(string)
-	appName := d.Get("application_name").(string)
-	path := d.Get("path").(string)
+    appID := d.Get("application_id").(string)
+    env := d.Get("env").(string)
+    path := d.Get("path").(string)
 
-	opts := phase.GetAllSecretsOptions{
-		EnvName:    env,
-		AppID:      appID,
-		AppName:    appName,
-		SecretPath: path,
-	}
+    secrets, err := client.ListSecrets(appID, env, path)
+    if err != nil {
+        return diag.FromErr(err)
+    }
 
-	secrets, err := client.GetAll(opts)
-	if err != nil {
-		return diag.FromErr(err)
-	}
+    if err := d.Set("secrets", flattenSecrets(secrets)); err != nil {
+        return diag.FromErr(err)
+    }
 
-	secretMap := make(map[string]string)
-	for _, secret := range secrets {
-		key, ok := secret["key"].(string)
-		if !ok {
-			continue
-		}
-		value, ok := secret["value"].(string)
-		if !ok {
-			continue
-		}
-		secretMap[key] = value
-	}
+    d.SetId(fmt.Sprintf("%s-%s-%s", appID, env, path))
 
-	if err := d.Set("secrets", secretMap); err != nil {
-		return diag.FromErr(err)
-	}
+    return nil
+}
 
-	// Generate a unique ID for this data source
-	identifier := appID
-	if identifier == "" {
-		identifier = appName
-	}
-	d.SetId(env + "-" + identifier + "-" + path)
+func expandStringSet(set *schema.Set) []string {
+    list := set.List()
+    result := make([]string, len(list))
+    for i, v := range list {
+        result[i] = v.(string)
+    }
+    return result
+}
 
-	return nil
+func flattenSecrets(secrets []Secret) []interface{} {
+    var result []interface{}
+    for _, secret := range secrets {
+        s := map[string]interface{}{
+            "id":      secret.ID,
+            "key":     secret.Key,
+            "value":   secret.Value,
+            "comment": secret.Comment,
+            "tags":    secret.Tags,
+            "path":    secret.Path,
+        }
+        result = append(result, s)
+    }
+    return result
 }
