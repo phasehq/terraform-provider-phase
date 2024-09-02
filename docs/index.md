@@ -40,7 +40,7 @@ output "all_secret_keys" {
   value = keys(data.phase_secrets.all.secrets)
 }
 
-// Single secret retrieval 
+// Single secret retrieval
 output "specific_secret" {
   value     = data.phase_secrets.single.secrets["SPECIFIC_SECRET_KEY"]
   sensitive = true
@@ -126,3 +126,36 @@ resource "some_resource" "example" {
 ```
 
 Always mark outputs containing secret values as sensitive to prevent them from being displayed in console output or logs.
+
+## Personal Secret Overrides
+
+Personal Secret Overrides allow individual users to temporarily override the value of a secret for their own use, without affecting the secret's value for other users or systems. Here are some important points to note about Personal Secret Overrides:
+
+1. **User Token Requirement**: To use Personal Secret Overrides, you must authenticate with a Phase User Token (Personal Access Token or PAT). Service tokens do not support Personal Secret Overrides.
+
+2. **Activation**: Personal Secret Overrides must be activated through the Phase Console or the Phase CLI. They cannot be directly triggered or modified through the Terraform provider.
+
+3. **Behavior**: When a Personal Secret Override is active for a user, the Terraform provider will automatically use the overridden value instead of the main secret value when fetching secrets.
+
+4. **Visibility**: Personal Secret Overrides are only visible and applicable to the user who created them. Other users and systems will continue to see and use the main secret value.
+
+5. **Temporary Nature**: Personal Secret Overrides are intended for temporary use, such as during development or testing. They should not be relied upon for production configurations.
+
+Example of how a Personal Secret Override might be reflected in Terraform:
+
+```hcl
+data "phase_secrets" "example" {
+  env    = "development"
+  app_id = "your-app-id"
+  key    = "DATABASE_URL"
+}
+
+output "database_url" {
+  value     = data.phase_secrets.example.secrets["DATABASE_URL"]
+  sensitive = true
+}
+```
+
+In this example, if the authenticated user has an active Personal Secret Override for the `DATABASE_URL` secret, the output will contain the overridden value. Otherwise, it will contain the main secret value.
+
+Remember that the presence and value of Personal Secret Overrides depend on the authenticated user and the state of overrides in the Phase system, not on the Terraform configuration itself.
