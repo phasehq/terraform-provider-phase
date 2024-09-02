@@ -11,7 +11,7 @@ terraform {
   required_providers {
     phase = {
       source  = "phasehq/phase"
-      version = "0.1.0" // replace with latest version
+      version = "0.1.1" // replace with latest version
     }
   }
 }
@@ -29,23 +29,15 @@ data "phase_secrets" "all" {
 }
 
 # Retrieve a specific secret
-data "phase_secrets" "single" {
-  env    = "development"
-  app_id = "your-app-id"
-  path   = "/specific/path"
-  key    = "SPECIFIC_SECRET_KEY"
+output "secret_keys" {
+  value = data.phase_secrets.all.secrets["STRIPE_KEY"]
+  sensitive = true
 }
 
 // Fetch all secrets
 # Use secrets
 output "all_secret_keys" {
-  value = keys(data.phase_secrets.all.secrets)
-}
-
-// Single secret retrieval 
-output "specific_secret" {
-  value     = data.phase_secrets.single.secrets["SPECIFIC_SECRET_KEY"]
-  sensitive = true
+  value = data.phase_secrets.all.secrets
 }
 ```
 
