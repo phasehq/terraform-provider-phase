@@ -1,12 +1,19 @@
+#!/bin/bash
+
+# Set the version
+VERSION="0.1.1"
+
+# Build the provider
 go build -o terraform-provider-phase
 
-rm -rf  ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/1.0.0/lin
-ux_amd64/
+# Create the plugin directory if it doesn't exist
+mkdir -p ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/${VERSION}/$(go env GOOS)_$(go env GOARCH)/
 
-mv terraform-provider-phase ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/0.1.0/$(go env GOOS)_$(go env GOARCH)
+# Move the binary to the plugin directory
+mv terraform-provider-phase ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/${VERSION}/$(go env GOOS)_$(go env GOARCH)/
 
-rm .terraform.lock.hcl
+# Remove the lock file if it exists
+rm -f .terraform.lock.hcl
 
+# Initialize Terraform
 terraform init
-
-terraform plan
