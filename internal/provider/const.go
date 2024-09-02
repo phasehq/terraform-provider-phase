@@ -8,7 +8,7 @@ import (
 
 const (
 	// Version of the provider
-	Version = "0.1.0"
+	Version = "0.2.0"
 
 	// DefaultHostURL is the default host for Phase API
 	DefaultHostURL = "https://api.phase.dev"
@@ -27,12 +27,19 @@ type PhaseClient struct {
 
 // Secret represents a secret in the Phase API
 type Secret struct {
-	ID      string   `json:"id,omitempty"`
-	Key     string   `json:"key"`
-	Value   string   `json:"value"`
-	Comment string   `json:"comment,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
-	Path    string   `json:"path,omitempty"`
+	ID      string         `json:"id,omitempty"`
+	Key     string         `json:"key"`
+	Value   string         `json:"value"`
+	Comment string         `json:"comment,omitempty"`
+	Path    string         `json:"path,omitempty"`
+	Override *SecretOverride `json:"override,omitempty"`
+}
+
+// SecretOverride represents a personal secret override
+type SecretOverride struct {
+	ID       string `json:"id,omitempty"`
+	Value    string `json:"value"`
+	IsActive bool   `json:"isActive"`
 }
 
 var (
