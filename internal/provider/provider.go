@@ -154,7 +154,7 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
 
-	createdSecret, err := client.CreateSecret(appID, env, client.TokenType, secret)
+	createdSecret, err := client.CreateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -170,7 +170,7 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 	env := d.Get("env").(string)
 	secretID := d.Id()
 
-	secret, err := client.ReadSecret(appID, env, secretID, client.TokenType)
+	secret, err := client.ReadSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -220,7 +220,7 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
 
-	_, err := client.UpdateSecret(appID, env, client.TokenType, secret)
+	_, err := client.UpdateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -235,7 +235,7 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 	env := d.Get("env").(string)
 	secretID := d.Id()
 
-	err := client.DeleteSecret(appID, env, secretID, client.TokenType)
+	err := client.DeleteSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -321,7 +321,7 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
 	env := d.Get("env").(string)
 	path := d.Get("path").(string)
 
-	secrets, err := client.ListSecrets(appID, env, path, client.TokenType)
+	secrets, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
 	if err != nil {
 		return diag.FromErr(err)
 	}
