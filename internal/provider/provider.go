@@ -28,7 +28,7 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-            "phase_secret": resourceSecret(),
+			"phase_secret": resourceSecret(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"phase_secrets": dataSourceSecrets(),
@@ -38,12 +38,12 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-    phaseToken := d.Get("phase_token").(string)
-    host := d.Get("host").(string)
+	phaseToken := d.Get("phase_token").(string)
+	host := d.Get("host").(string)
 
-    if host != DefaultHostURL {
-        host = fmt.Sprintf("%s/service/public", host)
-    }
+	if host != DefaultHostURL {
+		host = fmt.Sprintf("%s/service/public", host)
+	}
 
 	tokenType, bearerToken := extractTokenInfo(phaseToken)
 
@@ -103,15 +103,28 @@ func resourceSecret() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"tags": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
 			"path": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "/",
+			},
+			"override": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"value": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+						},
+						"is_active": {
+							Type:     schema.TypeBool,
+							Required: true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -124,8 +137,18 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		Key:     d.Get("key").(string),
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
-		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
 		Path:    d.Get("path").(string),
+	}
+
+	if v, ok := d.GetOk("override"); ok {
+		overrideSet := v.(*schema.Set).List()
+		if len(overrideSet) > 0 {
+			overrideMap := overrideSet[0].(map[string]interface{})
+			secret.Override = &SecretOverride{
+				Value:    overrideMap["value"].(string),
+				IsActive: overrideMap["is_active"].(bool),
+			}
+		}
 	}
 
 	appID := d.Get("app_id").(string)
@@ -145,18 +168,37 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
-	secretID := d.Id()
+	secretKey := d.Get("key").(string)
 
-	secret, err := client.ReadSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	secrets, err := client.ReadSecret(appID, env, secretKey, fmt.Sprintf("Bearer %s", client.TokenType))
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
+	if len(secrets) == 0 {
+		return diag.Errorf("No secrets found")
+	}
+
+	// If a specific key was provided, use the first (and should be only) secret
+	secret := secrets[0]
+
+	d.SetId(secret.Key) // Use the key as the ID
 	d.Set("key", secret.Key)
-	d.Set("value", secret.Value)
 	d.Set("comment", secret.Comment)
-	d.Set("tags", secret.Tags)
 	d.Set("path", secret.Path)
+
+	if secret.Override != nil && secret.Override.IsActive {
+		d.Set("value", secret.Override.Value)
+		d.Set("override", []interface{}{
+			map[string]interface{}{
+				"value":     secret.Override.Value,
+				"is_active": secret.Override.IsActive,
+			},
+		})
+	} else {
+		d.Set("value", secret.Value)
+		d.Set("override", []interface{}{})
+	}
 
 	return nil
 }
@@ -169,8 +211,18 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		Key:     d.Get("key").(string),
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
-		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
 		Path:    d.Get("path").(string),
+	}
+
+	if v, ok := d.GetOk("override"); ok {
+		overrideSet := v.(*schema.Set).List()
+		if len(overrideSet) > 0 {
+			overrideMap := overrideSet[0].(map[string]interface{})
+			secret.Override = &SecretOverride{
+				Value:    overrideMap["value"].(string),
+				IsActive: overrideMap["is_active"].(bool),
+			}
+		}
 	}
 
 	appID := d.Get("app_id").(string)
@@ -220,38 +272,17 @@ func dataSourceSecrets() *schema.Resource {
                 Default:     "/",
                 Description: "The path to fetch secrets from.",
             },
+            "key": {
+                Type:        schema.TypeString,
+                Optional:    true,
+                Description: "The key of a specific secret to fetch.",
+            },
             "secrets": {
-                Type:     schema.TypeList,
-                Computed: true,
-                Elem: &schema.Resource{
-                    Schema: map[string]*schema.Schema{
-                        "id": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "key": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "value": {
-                            Type:      schema.TypeString,
-                            Computed:  true,
-                            Sensitive: true,
-                        },
-                        "comment": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "tags": {
-                            Type:     schema.TypeList,
-                            Computed: true,
-                            Elem:     &schema.Schema{Type: schema.TypeString},
-                        },
-                        "path": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                    },
+                Type:      schema.TypeMap,
+                Computed:  true,
+                Sensitive: true,
+                Elem: &schema.Schema{
+                    Type: schema.TypeString,
                 },
             },
         },
@@ -264,42 +295,38 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
     appID := d.Get("app_id").(string)
     env := d.Get("env").(string)
     path := d.Get("path").(string)
+    key := d.Get("key").(string)
 
-    secrets, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
+    // Determine if we're fetching all secrets
+    fetchingAll := path == ""
+
+    secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType))
     if err != nil {
         return diag.FromErr(err)
     }
 
-    if err := d.Set("secrets", flattenSecrets(secrets)); err != nil {
+    secretMap := make(map[string]string)
+    for _, secret := range secrets {
+        if fetchingAll || secret.Path == path {
+            if secret.Override != nil && secret.Override.IsActive {
+                secretMap[secret.Key] = secret.Override.Value
+            } else {
+                secretMap[secret.Key] = secret.Value
+            }
+        }
+    }
+
+    if err := d.Set("secrets", secretMap); err != nil {
         return diag.FromErr(err)
     }
 
-    d.SetId(fmt.Sprintf("%s-%s-%s", appID, env, path))
+    // Set the path in the state
+    if err := d.Set("path", path); err != nil {
+        return diag.FromErr(err)
+    }
+
+    // Generate a unique ID for the data source
+    d.SetId(fmt.Sprintf("%s-%s-%s-%s", appID, env, path, key))
 
     return nil
-}
-
-func expandStringSet(set *schema.Set) []string {
-    list := set.List()
-    result := make([]string, len(list))
-    for i, v := range list {
-        result[i] = v.(string)
-    }
-    return result
-}
-
-func flattenSecrets(secrets []Secret) []interface{} {
-    var result []interface{}
-    for _, secret := range secrets {
-        s := map[string]interface{}{
-            "id":      secret.ID,
-            "key":     secret.Key,
-            "value":   secret.Value,
-            "comment": secret.Comment,
-            "tags":    secret.Tags,
-            "path":    secret.Path,
-        }
-        result = append(result, s)
-    }
-    return result
 }

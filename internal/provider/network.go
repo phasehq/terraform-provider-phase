@@ -81,9 +81,14 @@ func (c *PhaseClient) CreateSecret(appID, env, tokenType string, secret Secret) 
 	return &createdSecrets[0], nil
 }
 
-// ReadSecret reads a secret by its ID
-func (c *PhaseClient) ReadSecret(appID, env, secretID, tokenType string) (*Secret, error) {
-	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&id=%s", c.HostURL, appID, env, secretID)
+// If secretKey is empty, it fetches all secrets for the given app and environment.
+func (c *PhaseClient) ReadSecret(appID, env, secretKey, tokenType string) ([]Secret, error) {
+	var url string
+	if secretKey != "" {
+		url = fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&key=%s", c.HostURL, appID, env, secretKey)
+	} else {
+		url = fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s", c.HostURL, appID, env)
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -104,7 +109,7 @@ func (c *PhaseClient) ReadSecret(appID, env, secretID, tokenType string) (*Secre
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to read secret: %s", resp.Status)
+		return nil, fmt.Errorf("failed to read secret(s): %s", resp.Status)
 	}
 
 	var secrets []Secret
@@ -114,10 +119,10 @@ func (c *PhaseClient) ReadSecret(appID, env, secretID, tokenType string) (*Secre
 	}
 
 	if len(secrets) == 0 {
-		return nil, fmt.Errorf("secret not found")
+		return nil, fmt.Errorf("no secrets found")
 	}
 
-	return &secrets[0], nil
+	return secrets, nil
 }
 
 // UpdateSecret updates an existing secret
