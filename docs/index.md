@@ -9,7 +9,7 @@ terraform {
   required_providers {
     phase = {
       source  = "phasehq/phase"
-      version = "0.1.0" // replace with latest version
+      version = "0.1.1" // replace with latest version
     }
   }
 }
@@ -19,30 +19,29 @@ provider "phase" {
   phase_token = "pss_service:v1:..." # or "pss_user:v1:..." // A Phase Service Token or a Phase User Token (PAT)
 }
 
-# Retrieve all secrets under a specific path
+# Retrieve all secrets for an app
 data "phase_secrets" "all" {
   env    = "development"
   app_id = "your-app-id"
-  path   = "/"
+  path   = ""
 }
 
-# Retrieve a specific secret
-data "phase_secrets" "single" {
+# Get all secrets
+output "all_secret_keys" {
+  value = data.phase_secrets.all.secrets
+  sensitive = true
+}
+
+# Alternatively, retrieve all secrets under a specific path
+data "phase_secrets" "path_secrets" {
   env    = "development"
   app_id = "your-app-id"
-  path   = "/specific/path"
-  key    = "SPECIFIC_SECRET_KEY"
+  path   = "/backend"
 }
 
-// Fetch all secrets
-# Use secrets
-output "all_secret_keys" {
-  value = keys(data.phase_secrets.all.secrets)
-}
-
-// Single secret retrieval
-output "specific_secret" {
-  value     = data.phase_secrets.single.secrets["SPECIFIC_SECRET_KEY"]
+# Get a single secret from that path
+output "backend_secret_keys" {
+  value = data.phase_secrets.path_secrets.secrets["JWT_SECRET"]
   sensitive = true
 }
 ```
@@ -66,7 +65,7 @@ The following arguments are supported:
 
 * `env` - (Required) The environment name.
 * `app_id` - (Required) The application ID.
-* `path` - (Optional) The path to fetch secrets from. Defaults to "/".
+* `path` - (Optional) The path to fetch secrets from. If not provided, fetches secrets from all paths.
 * `key` - (Optional) A specific secret key to fetch. If provided, only this secret will be returned.
 
 #### Attribute Reference
@@ -77,23 +76,24 @@ The following attributes are exported:
 
 ## Fetching Secrets
 
-### Fetching All Secrets
+### Fetching All Secrets for an App
 
-To fetch all secrets under a specific path:
+To fetch all secrets for a given app:
 
 ```hcl
 data "phase_secrets" "all" {
   env    = "development"
   app_id = "your-app-id"
-  path   = "/"
+  path   = ""
 }
 
 output "all_secret_keys" {
-  value = keys(data.phase_secrets.all.secrets)
+  value = data.phase_secrets.all.secrets
+  sensitive = true
 }
 ```
 
-This will fetch all secrets under the root path ("/") and output their keys.
+This will fetch all secrets for the specified app and environment, and output their keys.
 
 ### Fetching a Single Secret
 
@@ -103,17 +103,34 @@ To fetch a specific secret:
 data "phase_secrets" "single" {
   env    = "development"
   app_id = "your-app-id"
-  path   = "/path/to/secret"
-  key    = "SPECIFIC_SECRET_KEY"
 }
 
-output "specific_secret" {
-  value     = data.phase_secrets.single.secrets["SPECIFIC_SECRET_KEY"]
+output "database_url" {
+  value     = data.phase_secrets.single.secrets["DATABASE_URL"]
   sensitive = true
 }
 ```
 
 This will fetch only the specified secret and output its value.
+
+### Fetching Secrets from a Specific Path
+
+To fetch all secrets under a specific path:
+
+```hcl
+data "phase_secrets" "path_secrets" {
+  env    = "development"
+  app_id = "your-app-id"
+  path   = "/backend"
+}
+
+output "backend_secret_keys" {
+  value = data.phase_secrets.path_secrets.secrets["JWT_SECRET"]
+  sensitive = true
+}
+```
+
+This will fetch all secrets under the specified path and output their keys.
 
 ### Using Secrets
 
@@ -121,7 +138,9 @@ You can use the fetched secrets in your Terraform configurations like this:
 
 ```hcl
 resource "some_resource" "example" {
-  sensitive_field = data.phase_secrets.all.secrets["SENSITIVE_SECRET_KEY"]
+  database_url   = data.phase_secrets.single.secrets["DATABASE_URL"]
+  api_key        = data.phase_secrets.all.secrets["API_KEY"]
+  backend_config = data.phase_secrets.path_secrets.secrets["BACKEND_CONFIG"]
 }
 ```
 
@@ -140,22 +159,5 @@ Personal Secret Overrides allow individual users to temporarily override the val
 4. **Visibility**: Personal Secret Overrides are only visible and applicable to the user who created them. Other users and systems will continue to see and use the main secret value.
 
 5. **Temporary Nature**: Personal Secret Overrides are intended for temporary use, such as during development or testing. They should not be relied upon for production configurations.
-
-Example of how a Personal Secret Override might be reflected in Terraform:
-
-```hcl
-data "phase_secrets" "example" {
-  env    = "development"
-  app_id = "your-app-id"
-  key    = "DATABASE_URL"
-}
-
-output "database_url" {
-  value     = data.phase_secrets.example.secrets["DATABASE_URL"]
-  sensitive = true
-}
-```
-
-In this example, if the authenticated user has an active Personal Secret Override for the `DATABASE_URL` secret, the output will contain the overridden value. Otherwise, it will contain the main secret value.
 
 Remember that the presence and value of Personal Secret Overrides depend on the authenticated user and the state of overrides in the Phase system, not on the Terraform configuration itself.
