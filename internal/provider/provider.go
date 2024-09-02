@@ -168,13 +168,21 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
-	secretID := d.Id()
+	secretKey := d.Get("key").(string)
 
-	secret, err := client.ReadSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	secrets, err := client.ReadSecret(appID, env, secretKey, fmt.Sprintf("Bearer %s", client.TokenType))
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
+	if len(secrets) == 0 {
+		return diag.Errorf("No secrets found")
+	}
+
+	// If a specific key was provided, use the first (and should be only) secret
+	secret := secrets[0]
+
+	d.SetId(secret.Key) // Use the key as the ID
 	d.Set("key", secret.Key)
 	d.Set("comment", secret.Comment)
 	d.Set("path", secret.Path)
@@ -245,120 +253,80 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 }
 
 func dataSourceSecrets() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceSecretsRead,
-		Schema: map[string]*schema.Schema{
-			"app_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The ID of the Phase App.",
-			},
-			"env": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The environment name.",
-			},
-			"path": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     "/",
-				Description: "The path to fetch secrets from.",
-			},
-			"secrets": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"key": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"value": {
-							Type:      schema.TypeString,
-							Computed:  true,
-							Sensitive: true,
-						},
-						"comment": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"path": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"override": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"value": {
-										Type:      schema.TypeString,
-										Computed:  true,
-										Sensitive: true,
-									},
-									"is_active": {
-										Type:     schema.TypeBool,
-										Computed: true,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+    return &schema.Resource{
+        ReadContext: dataSourceSecretsRead,
+        Schema: map[string]*schema.Schema{
+            "app_id": {
+                Type:        schema.TypeString,
+                Required:    true,
+                Description: "The ID of the Phase App.",
+            },
+            "env": {
+                Type:        schema.TypeString,
+                Required:    true,
+                Description: "The environment name.",
+            },
+            "path": {
+                Type:        schema.TypeString,
+                Optional:    true,
+                Default:     "/",
+                Description: "The path to fetch secrets from.",
+            },
+            "key": {
+                Type:        schema.TypeString,
+                Optional:    true,
+                Description: "The key of a specific secret to fetch.",
+            },
+            "secrets": {
+                Type:      schema.TypeMap,
+                Computed:  true,
+                Sensitive: true,
+                Elem: &schema.Schema{
+                    Type: schema.TypeString,
+                },
+            },
+        },
+    }
 }
 
 func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(*PhaseClient)
+    client := meta.(*PhaseClient)
 
-	appID := d.Get("app_id").(string)
-	env := d.Get("env").(string)
-	path := d.Get("path").(string)
+    appID := d.Get("app_id").(string)
+    env := d.Get("env").(string)
+    path := d.Get("path").(string)
+    key := d.Get("key").(string)
 
-	secrets, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
-	if err != nil {
-		return diag.FromErr(err)
-	}
+    // Determine if we're fetching all secrets
+    fetchingAll := path == ""
 
-	if err := d.Set("secrets", flattenSecrets(secrets)); err != nil {
-		return diag.FromErr(err)
-	}
+    secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType))
+    if err != nil {
+        return diag.FromErr(err)
+    }
 
-	d.SetId(fmt.Sprintf("%s-%s-%s", appID, env, path))
+    secretMap := make(map[string]string)
+    for _, secret := range secrets {
+        if fetchingAll || secret.Path == path {
+            if secret.Override != nil && secret.Override.IsActive {
+                secretMap[secret.Key] = secret.Override.Value
+            } else {
+                secretMap[secret.Key] = secret.Value
+            }
+        }
+    }
 
-	return nil
-}
+    if err := d.Set("secrets", secretMap); err != nil {
+        return diag.FromErr(err)
+    }
 
-func flattenSecrets(secrets []Secret) []interface{} {
-	var result []interface{}
-	for _, secret := range secrets {
-		s := map[string]interface{}{
-			"id":      secret.ID,
-			"key":     secret.Key,
-			"comment": secret.Comment,
-			"path":    secret.Path,
-		}
+    // Set the path in the state
+    if err := d.Set("path", path); err != nil {
+        return diag.FromErr(err)
+    }
 
-		if secret.Override != nil && secret.Override.IsActive {
-			s["value"] = secret.Override.Value
-			s["override"] = []interface{}{
-				map[string]interface{}{
-					"value":     secret.Override.Value,
-					"is_active": secret.Override.IsActive,
-				},
-			}
-		} else {
-			s["value"] = secret.Value
-			s["override"] = []interface{}{}
-		}
+    // Generate a unique ID for the data source
+    d.SetId(fmt.Sprintf("%s-%s-%s-%s", appID, env, path, key))
 
-		result = append(result, s)
-	}
-	return result
+    return nil
 }
