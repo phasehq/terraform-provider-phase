@@ -28,7 +28,7 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-            "phase_secret": resourceSecret(),
+			"phase_secret": resourceSecret(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"phase_secrets": dataSourceSecrets(),
@@ -38,12 +38,12 @@ func Provider() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-    phaseToken := d.Get("phase_token").(string)
-    host := d.Get("host").(string)
+	phaseToken := d.Get("phase_token").(string)
+	host := d.Get("host").(string)
 
-    if host != DefaultHostURL {
-        host = fmt.Sprintf("%s/service/public", host)
-    }
+	if host != DefaultHostURL {
+		host = fmt.Sprintf("%s/service/public", host)
+	}
 
 	tokenType, bearerToken := extractTokenInfo(phaseToken)
 
@@ -103,15 +103,28 @@ func resourceSecret() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"tags": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-			},
 			"path": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "/",
+			},
+			"override": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"value": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+						},
+						"is_active": {
+							Type:     schema.TypeBool,
+							Required: true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -124,14 +137,24 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		Key:     d.Get("key").(string),
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
-		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
 		Path:    d.Get("path").(string),
+	}
+
+	if v, ok := d.GetOk("override"); ok {
+		overrideSet := v.(*schema.Set).List()
+		if len(overrideSet) > 0 {
+			overrideMap := overrideSet[0].(map[string]interface{})
+			secret.Override = &SecretOverride{
+				Value:    overrideMap["value"].(string),
+				IsActive: overrideMap["is_active"].(bool),
+			}
+		}
 	}
 
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
 
-	createdSecret, err := client.CreateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
+	createdSecret, err := client.CreateSecret(appID, env, client.TokenType, secret)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -147,16 +170,27 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 	env := d.Get("env").(string)
 	secretID := d.Id()
 
-	secret, err := client.ReadSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	secret, err := client.ReadSecret(appID, env, secretID, client.TokenType)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	d.Set("key", secret.Key)
-	d.Set("value", secret.Value)
 	d.Set("comment", secret.Comment)
-	d.Set("tags", secret.Tags)
 	d.Set("path", secret.Path)
+
+	if secret.Override != nil && secret.Override.IsActive {
+		d.Set("value", secret.Override.Value)
+		d.Set("override", []interface{}{
+			map[string]interface{}{
+				"value":     secret.Override.Value,
+				"is_active": secret.Override.IsActive,
+			},
+		})
+	} else {
+		d.Set("value", secret.Value)
+		d.Set("override", []interface{}{})
+	}
 
 	return nil
 }
@@ -169,14 +203,24 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		Key:     d.Get("key").(string),
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
-		Tags:    expandStringSet(d.Get("tags").(*schema.Set)),
 		Path:    d.Get("path").(string),
+	}
+
+	if v, ok := d.GetOk("override"); ok {
+		overrideSet := v.(*schema.Set).List()
+		if len(overrideSet) > 0 {
+			overrideMap := overrideSet[0].(map[string]interface{})
+			secret.Override = &SecretOverride{
+				Value:    overrideMap["value"].(string),
+				IsActive: overrideMap["is_active"].(bool),
+			}
+		}
 	}
 
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
 
-	_, err := client.UpdateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
+	_, err := client.UpdateSecret(appID, env, client.TokenType, secret)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -191,7 +235,7 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 	env := d.Get("env").(string)
 	secretID := d.Id()
 
-	err := client.DeleteSecret(appID, env, secretID, fmt.Sprintf("Bearer %s", client.TokenType))
+	err := client.DeleteSecret(appID, env, secretID, client.TokenType)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -201,105 +245,120 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 }
 
 func dataSourceSecrets() *schema.Resource {
-    return &schema.Resource{
-        ReadContext: dataSourceSecretsRead,
-        Schema: map[string]*schema.Schema{
-            "app_id": {
-                Type:        schema.TypeString,
-                Required:    true,
-                Description: "The ID of the Phase App.",
-            },
-            "env": {
-                Type:        schema.TypeString,
-                Required:    true,
-                Description: "The environment name.",
-            },
-            "path": {
-                Type:        schema.TypeString,
-                Optional:    true,
-                Default:     "/",
-                Description: "The path to fetch secrets from.",
-            },
-            "secrets": {
-                Type:     schema.TypeList,
-                Computed: true,
-                Elem: &schema.Resource{
-                    Schema: map[string]*schema.Schema{
-                        "id": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "key": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "value": {
-                            Type:      schema.TypeString,
-                            Computed:  true,
-                            Sensitive: true,
-                        },
-                        "comment": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                        "tags": {
-                            Type:     schema.TypeList,
-                            Computed: true,
-                            Elem:     &schema.Schema{Type: schema.TypeString},
-                        },
-                        "path": {
-                            Type:     schema.TypeString,
-                            Computed: true,
-                        },
-                    },
-                },
-            },
-        },
-    }
+	return &schema.Resource{
+		ReadContext: dataSourceSecretsRead,
+		Schema: map[string]*schema.Schema{
+			"app_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The ID of the Phase App.",
+			},
+			"env": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The environment name.",
+			},
+			"path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "/",
+				Description: "The path to fetch secrets from.",
+			},
+			"secrets": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"key": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"value": {
+							Type:      schema.TypeString,
+							Computed:  true,
+							Sensitive: true,
+						},
+						"comment": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"path": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"override": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"value": {
+										Type:      schema.TypeString,
+										Computed:  true,
+										Sensitive: true,
+									},
+									"is_active": {
+										Type:     schema.TypeBool,
+										Computed: true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    appID := d.Get("app_id").(string)
-    env := d.Get("env").(string)
-    path := d.Get("path").(string)
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
+	path := d.Get("path").(string)
 
-    secrets, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	secrets, err := client.ListSecrets(appID, env, path, client.TokenType)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    if err := d.Set("secrets", flattenSecrets(secrets)); err != nil {
-        return diag.FromErr(err)
-    }
+	if err := d.Set("secrets", flattenSecrets(secrets)); err != nil {
+		return diag.FromErr(err)
+	}
 
-    d.SetId(fmt.Sprintf("%s-%s-%s", appID, env, path))
+	d.SetId(fmt.Sprintf("%s-%s-%s", appID, env, path))
 
-    return nil
-}
-
-func expandStringSet(set *schema.Set) []string {
-    list := set.List()
-    result := make([]string, len(list))
-    for i, v := range list {
-        result[i] = v.(string)
-    }
-    return result
+	return nil
 }
 
 func flattenSecrets(secrets []Secret) []interface{} {
-    var result []interface{}
-    for _, secret := range secrets {
-        s := map[string]interface{}{
-            "id":      secret.ID,
-            "key":     secret.Key,
-            "value":   secret.Value,
-            "comment": secret.Comment,
-            "tags":    secret.Tags,
-            "path":    secret.Path,
-        }
-        result = append(result, s)
-    }
-    return result
+	var result []interface{}
+	for _, secret := range secrets {
+		s := map[string]interface{}{
+			"id":      secret.ID,
+			"key":     secret.Key,
+			"comment": secret.Comment,
+			"path":    secret.Path,
+		}
+
+		if secret.Override != nil && secret.Override.IsActive {
+			s["value"] = secret.Override.Value
+			s["override"] = []interface{}{
+				map[string]interface{}{
+					"value":     secret.Override.Value,
+					"is_active": secret.Override.IsActive,
+				},
+			}
+		} else {
+			s["value"] = secret.Value
+			s["override"] = []interface{}{}
+		}
+
+		result = append(result, s)
+	}
+	return result
 }
