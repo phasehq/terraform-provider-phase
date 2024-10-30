@@ -58,18 +58,30 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 }
 
 func extractTokenInfo(phaseToken string) (string, string) {
+	// First, check if it's a service token
+	if PssServicePattern.MatchString(phaseToken) {
+		parts := strings.Split(phaseToken, ":")
+		if len(parts) >= 3 {
+			version := parts[1]
+			bearerToken := parts[2]
+
+			// For service tokens with v2
+			if version == "v2" {
+				return "ServiceAccount", bearerToken
+			}
+			return "Service", bearerToken
+		}
+	}
+
+	// Then check if it's a user token
 	if PssUserPattern.MatchString(phaseToken) {
 		parts := strings.Split(phaseToken, ":")
 		if len(parts) >= 3 {
 			return "User", parts[2]
 		}
-	} else if PssServicePattern.MatchString(phaseToken) {
-		parts := strings.Split(phaseToken, ":")
-		if len(parts) >= 3 {
-			return "Service", parts[2]
-		}
 	}
-	return "", phaseToken // Default to empty token type if no match
+
+	return "", phaseToken
 }
 
 func resourceSecret() *schema.Resource {
@@ -253,80 +265,80 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 }
 
 func dataSourceSecrets() *schema.Resource {
-    return &schema.Resource{
-        ReadContext: dataSourceSecretsRead,
-        Schema: map[string]*schema.Schema{
-            "app_id": {
-                Type:        schema.TypeString,
-                Required:    true,
-                Description: "The ID of the Phase App.",
-            },
-            "env": {
-                Type:        schema.TypeString,
-                Required:    true,
-                Description: "The environment name.",
-            },
-            "path": {
-                Type:        schema.TypeString,
-                Optional:    true,
-                Default:     "/",
-                Description: "The path to fetch secrets from.",
-            },
-            "key": {
-                Type:        schema.TypeString,
-                Optional:    true,
-                Description: "The key of a specific secret to fetch.",
-            },
-            "secrets": {
-                Type:      schema.TypeMap,
-                Computed:  true,
-                Sensitive: true,
-                Elem: &schema.Schema{
-                    Type: schema.TypeString,
-                },
-            },
-        },
-    }
+	return &schema.Resource{
+		ReadContext: dataSourceSecretsRead,
+		Schema: map[string]*schema.Schema{
+			"app_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The ID of the Phase App.",
+			},
+			"env": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The environment name.",
+			},
+			"path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "/",
+				Description: "The path to fetch secrets from.",
+			},
+			"key": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "The key of a specific secret to fetch.",
+			},
+			"secrets": {
+				Type:      schema.TypeMap,
+				Computed:  true,
+				Sensitive: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+		},
+	}
 }
 
 func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PhaseClient)
+	client := meta.(*PhaseClient)
 
-    appID := d.Get("app_id").(string)
-    env := d.Get("env").(string)
-    path := d.Get("path").(string)
-    key := d.Get("key").(string)
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
+	path := d.Get("path").(string)
+	key := d.Get("key").(string)
 
-    // Determine if we're fetching all secrets
-    fetchingAll := path == ""
+	// Determine if we're fetching all secrets
+	fetchingAll := path == ""
 
-    secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType))
-    if err != nil {
-        return diag.FromErr(err)
-    }
+	secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-    secretMap := make(map[string]string)
-    for _, secret := range secrets {
-        if fetchingAll || secret.Path == path {
-            if secret.Override != nil && secret.Override.IsActive {
-                secretMap[secret.Key] = secret.Override.Value
-            } else {
-                secretMap[secret.Key] = secret.Value
-            }
-        }
-    }
+	secretMap := make(map[string]string)
+	for _, secret := range secrets {
+		if fetchingAll || secret.Path == path {
+			if secret.Override != nil && secret.Override.IsActive {
+				secretMap[secret.Key] = secret.Override.Value
+			} else {
+				secretMap[secret.Key] = secret.Value
+			}
+		}
+	}
 
-    if err := d.Set("secrets", secretMap); err != nil {
-        return diag.FromErr(err)
-    }
+	if err := d.Set("secrets", secretMap); err != nil {
+		return diag.FromErr(err)
+	}
 
-    // Set the path in the state
-    if err := d.Set("path", path); err != nil {
-        return diag.FromErr(err)
-    }
+	// Set the path in the state
+	if err := d.Set("path", path); err != nil {
+		return diag.FromErr(err)
+	}
 
-    // Generate a unique ID for the data source
-    d.SetId(fmt.Sprintf("%s-%s-%s-%s", appID, env, path, key))
+	// Generate a unique ID for the data source
+	d.SetId(fmt.Sprintf("%s-%s-%s-%s", appID, env, path, key))
 
-    return nil
+	return nil
 }
