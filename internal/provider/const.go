@@ -5,10 +5,9 @@ import (
 	"regexp"
 )
 
-
 const (
 	// Version of the provider
-	Version = "0.1.1"
+	Version = "0.1.2"
 
 	// DefaultHostURL is the default host for Phase API
 	DefaultHostURL = "https://api.phase.dev"
@@ -27,11 +26,11 @@ type PhaseClient struct {
 
 // Secret represents a secret in the Phase API
 type Secret struct {
-	ID      string         `json:"id,omitempty"`
-	Key     string         `json:"key"`
-	Value   string         `json:"value"`
-	Comment string         `json:"comment,omitempty"`
-	Path    string         `json:"path,omitempty"`
+	ID       string          `json:"id,omitempty"`
+	Key      string          `json:"key"`
+	Value    string          `json:"value"`
+	Comment  string          `json:"comment,omitempty"`
+	Path     string          `json:"path,omitempty"`
 	Override *SecretOverride `json:"override,omitempty"`
 }
 
@@ -46,5 +45,4 @@ var (
 	// Compiled regex patterns
 	PssUserPattern    = regexp.MustCompile(`^pss_user:v(\d+):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64})$`)
 	PssServicePattern = regexp.MustCompile(`^pss_service:v(\d+):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64}):([a-fA-F0-9]{64})$`)
-
 )
