@@ -31,8 +31,7 @@ func Provider() *schema.Provider {
 			"phase_secret": resourceSecret(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"phase_secrets":        dataSourceSecrets(),
-			"phase_secrets_by_tag": dataSourceSecretsByTag(),
+			"phase_secrets": dataSourceSecrets(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
@@ -405,69 +404,6 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
 
 	// Generate a unique ID for the data source
 	d.SetId(fmt.Sprintf("%s-%s-%s-%s-%s", appID, env, path, key, tagsFilter))
-
-	return nil
-}
-
-func dataSourceSecretsByTag() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceSecretsByTagRead,
-		Schema: map[string]*schema.Schema{
-			"app_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The ID of the Phase App.",
-			},
-			"env": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The environment name.",
-			},
-			"tag": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The tag to filter secrets by.",
-			},
-			"secrets": {
-				Type:      schema.TypeMap,
-				Computed:  true,
-				Sensitive: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Description: "Map of secret keys to their values.",
-			},
-		},
-	}
-}
-
-func dataSourceSecretsByTagRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client := meta.(*PhaseClient)
-
-	appID := d.Get("app_id").(string)
-	env := d.Get("env").(string)
-	tag := d.Get("tag").(string)
-
-	secrets, err := client.ReadSecret(appID, env, "", fmt.Sprintf("Bearer %s", client.TokenType), tag)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	secretMap := make(map[string]string)
-	for _, secret := range secrets {
-		if secret.Override != nil && secret.Override.IsActive {
-			secretMap[secret.Key] = secret.Override.Value
-		} else {
-			secretMap[secret.Key] = secret.Value
-		}
-	}
-
-	if err := d.Set("secrets", secretMap); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Generate a unique ID for the data source
-	d.SetId(fmt.Sprintf("%s-%s-tag-%s", appID, env, tag))
 
 	return nil
 }
