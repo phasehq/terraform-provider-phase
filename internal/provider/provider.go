@@ -31,7 +31,8 @@ func Provider() *schema.Provider {
 			"phase_secret": resourceSecret(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"phase_secrets": dataSourceSecrets(),
+			"phase_secrets":        dataSourceSecrets(),
+			"phase_secrets_by_tag": dataSourceSecretsByTag(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
@@ -120,6 +121,25 @@ func resourceSecret() *schema.Resource {
 				Optional: true,
 				Default:  "/",
 			},
+			"tags": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+			"version": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"created_at": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"updated_at": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"override": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -150,6 +170,15 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
 		Path:    d.Get("path").(string),
+	}
+
+	// Handle tags if present
+	if v, ok := d.GetOk("tags"); ok {
+		tags := make([]string, 0)
+		for _, tag := range v.([]interface{}) {
+			tags = append(tags, tag.(string))
+		}
+		secret.Tags = tags
 	}
 
 	if v, ok := d.GetOk("override"); ok {
@@ -194,10 +223,18 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 	// If a specific key was provided, use the first (and should be only) secret
 	secret := secrets[0]
 
-	d.SetId(secret.Key) // Use the key as the ID
+	d.SetId(secret.ID)
 	d.Set("key", secret.Key)
 	d.Set("comment", secret.Comment)
 	d.Set("path", secret.Path)
+
+	// Set the new fields
+	if secret.Tags != nil {
+		d.Set("tags", secret.Tags)
+	}
+	d.Set("version", secret.Version)
+	d.Set("created_at", secret.CreatedAt)
+	d.Set("updated_at", secret.UpdatedAt)
 
 	if secret.Override != nil && secret.Override.IsActive {
 		d.Set("value", secret.Override.Value)
@@ -224,6 +261,15 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		Value:   d.Get("value").(string),
 		Comment: d.Get("comment").(string),
 		Path:    d.Get("path").(string),
+	}
+
+	// Handle tags if present
+	if v, ok := d.GetOk("tags"); ok {
+		tags := make([]string, 0)
+		for _, tag := range v.([]interface{}) {
+			tags = append(tags, tag.(string))
+		}
+		secret.Tags = tags
 	}
 
 	if v, ok := d.GetOk("override"); ok {
@@ -289,6 +335,14 @@ func dataSourceSecrets() *schema.Resource {
 				Optional:    true,
 				Description: "The key of a specific secret to fetch.",
 			},
+			"tags": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				Description: "List of tags to filter secrets by. Multiple tags are combined with OR logic.",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
 			"secrets": {
 				Type:      schema.TypeMap,
 				Computed:  true,
@@ -309,10 +363,22 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
 	path := d.Get("path").(string)
 	key := d.Get("key").(string)
 
+	// Handle tags if present
+	var tagsFilter string
+	if v, ok := d.GetOk("tags"); ok {
+		tags := make([]string, 0)
+		for _, tag := range v.([]interface{}) {
+			tags = append(tags, tag.(string))
+		}
+		if len(tags) > 0 {
+			tagsFilter = strings.Join(tags, ",")
+		}
+	}
+
 	// Determine if we're fetching all secrets
 	fetchingAll := path == ""
 
-	secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType))
+	secrets, err := client.ReadSecret(appID, env, key, fmt.Sprintf("Bearer %s", client.TokenType), tagsFilter)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -338,7 +404,70 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	// Generate a unique ID for the data source
-	d.SetId(fmt.Sprintf("%s-%s-%s-%s", appID, env, path, key))
+	d.SetId(fmt.Sprintf("%s-%s-%s-%s-%s", appID, env, path, key, tagsFilter))
+
+	return nil
+}
+
+func dataSourceSecretsByTag() *schema.Resource {
+	return &schema.Resource{
+		ReadContext: dataSourceSecretsByTagRead,
+		Schema: map[string]*schema.Schema{
+			"app_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The ID of the Phase App.",
+			},
+			"env": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The environment name.",
+			},
+			"tag": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The tag to filter secrets by.",
+			},
+			"secrets": {
+				Type:      schema.TypeMap,
+				Computed:  true,
+				Sensitive: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Description: "Map of secret keys to their values.",
+			},
+		},
+	}
+}
+
+func dataSourceSecretsByTagRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	client := meta.(*PhaseClient)
+
+	appID := d.Get("app_id").(string)
+	env := d.Get("env").(string)
+	tag := d.Get("tag").(string)
+
+	secrets, err := client.ReadSecret(appID, env, "", fmt.Sprintf("Bearer %s", client.TokenType), tag)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	secretMap := make(map[string]string)
+	for _, secret := range secrets {
+		if secret.Override != nil && secret.Override.IsActive {
+			secretMap[secret.Key] = secret.Override.Value
+		} else {
+			secretMap[secret.Key] = secret.Value
+		}
+	}
+
+	if err := d.Set("secrets", secretMap); err != nil {
+		return diag.FromErr(err)
+	}
+
+	// Generate a unique ID for the data source
+	d.SetId(fmt.Sprintf("%s-%s-tag-%s", appID, env, tag))
 
 	return nil
 }
