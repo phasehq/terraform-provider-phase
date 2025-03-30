@@ -16,7 +16,7 @@ import (
 func (c *PhaseClient) setHeaders(req *http.Request, tokenType string) {
 	osType := runtime.GOOS
 	architecture := runtime.GOARCH
-	
+
 	details := []string{fmt.Sprintf("%s %s", osType, architecture)}
 
 	currentUser, err := user.Current()
@@ -82,12 +82,17 @@ func (c *PhaseClient) CreateSecret(appID, env, tokenType string, secret Secret) 
 }
 
 // If secretKey is empty, it fetches all secrets for the given app and environment.
-func (c *PhaseClient) ReadSecret(appID, env, secretKey, tokenType string) ([]Secret, error) {
+func (c *PhaseClient) ReadSecret(appID, env, secretKey, tokenType string, tags ...string) ([]Secret, error) {
 	var url string
 	if secretKey != "" {
 		url = fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&key=%s", c.HostURL, appID, env, secretKey)
 	} else {
 		url = fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s", c.HostURL, appID, env)
+	}
+
+	// Add tags filter if provided
+	if len(tags) > 0 && tags[0] != "" {
+		url = fmt.Sprintf("%s&tags=%s", url, strings.Join(tags, ","))
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
