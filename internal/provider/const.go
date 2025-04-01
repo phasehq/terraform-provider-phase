@@ -18,10 +18,11 @@ const (
 
 // PhaseClient represents the client for interacting with the Phase API
 type PhaseClient struct {
-	HostURL    string
-	HTTPClient *http.Client
-	Token      string
-	TokenType  string
+	HostURL             string
+	HTTPClient          *http.Client
+	Token               string
+	TokenType           string
+	SkipTLSVerification bool
 }
 
 // Secret represents a secret in the Phase API
