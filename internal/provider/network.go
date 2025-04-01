@@ -33,6 +33,14 @@ func (c *PhaseClient) setHeaders(req *http.Request, tokenType string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("%s %s", tokenType, c.Token))
 	req.Header.Set("User-Agent", userAgent)
+
+	if c.SkipTLSVerification {
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		c.HTTPClient.Transport = transport
+	}
+
 }
 
 // CreateSecret creates a new secret
