@@ -26,6 +26,12 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"PHASE_TOKEN", "PHASE_SERVICE_TOKEN", "PHASE_PAT_TOKEN"}, nil),
 				Description: "The token for authenticating with Phase. Can be a service token or a personal access token (PAT). Can be set with PHASE_TOKEN, PHASE_SERVICE_TOKEN, or PHASE_PAT_TOKEN environment variables.",
 			},
+			"skip_tls_verification": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				Description: "Whether to skip TLS verification for the Phase API. Defaults to false. Insecure, use with caution.",
+			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"phase_secret": resourceSecret(),
@@ -40,6 +46,7 @@ func Provider() *schema.Provider {
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	phaseToken := d.Get("phase_token").(string)
 	host := d.Get("host").(string)
+	skipTLSVerification := d.Get("skip_tls_verification").(bool)
 
 	if host != DefaultHostURL {
 		host = fmt.Sprintf("%s/service/public", host)
@@ -48,10 +55,11 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	tokenType, bearerToken := extractTokenInfo(phaseToken)
 
 	client := &PhaseClient{
-		HostURL:    host,
-		HTTPClient: &http.Client{},
-		Token:      bearerToken,
-		TokenType:  tokenType,
+		HostURL:             host,
+		HTTPClient:          &http.Client{},
+		Token:               bearerToken,
+		TokenType:           tokenType,
+		SkipTLSVerification: skipTLSVerification,
 	}
 
 	return client, nil
