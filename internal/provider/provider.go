@@ -30,7 +30,7 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
-				Description: "Whether to skip TLS verification for the Phase API. Defaults to false. Insecure, use with caution.",
+				Description: "Whether to skip SSL/TLS certificate validation for the PHASE_HOST. Defaults to false.",
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
