@@ -74,7 +74,7 @@ func (c *PhaseClient) CreateSecret(appID, env, tokenType string, secret Secret) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to create secret: %s", resp.Status)
+		return nil, fmt.Errorf("failed to create secret: %s - %s", resp.Status, string(responseBody))
 	}
 
 	var createdSecrets []Secret
@@ -123,7 +123,7 @@ func (c *PhaseClient) ReadSecret(appID, env, secretKey, tokenType string, tags .
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to read secret(s): %s", resp.Status)
+		return nil, fmt.Errorf("failed to read secret(s): %s - %s", resp.Status, string(responseBody))
 	}
 
 	var secrets []Secret
@@ -169,7 +169,7 @@ func (c *PhaseClient) UpdateSecret(appID, env, tokenType string, secret Secret) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to update secret: %s", resp.Status)
+		return nil, fmt.Errorf("failed to update secret: %s - %s", resp.Status, string(responseBody))
 	}
 
 	var updatedSecrets []Secret
@@ -209,8 +209,13 @@ func (c *PhaseClient) DeleteSecret(appID, env, secretID, tokenType string) error
 	}
 	defer resp.Body.Close()
 
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to delete secret: %s", resp.Status)
+		return fmt.Errorf("failed to delete secret: %s - %s", resp.Status, string(responseBody))
 	}
 
 	return nil
@@ -239,7 +244,7 @@ func (c *PhaseClient) ListSecrets(appID, env, path, tokenType string) ([]Secret,
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to list secrets: %s", resp.Status)
+		return nil, fmt.Errorf("failed to list secrets: %s - %s", resp.Status, string(responseBody))
 	}
 
 	var secrets []Secret
