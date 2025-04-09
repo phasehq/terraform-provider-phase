@@ -202,8 +202,33 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	appID := d.Get("app_id").(string)
 	env := d.Get("env").(string)
 
+	// First, try to create the secret - workaround for updating secrets via KEYs.
 	createdSecret, err := client.CreateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
 	if err != nil {
+		// If we get a 409 Conflict error, the secret already exists, so try to update it instead
+		if strings.Contains(err.Error(), "409 Conflict") {
+			// Try to read the existing secret first to get its ID
+			existingSecrets, readErr := client.ReadSecret(appID, env, secret.Key, fmt.Sprintf("Bearer %s", client.TokenType))
+			if readErr != nil {
+				return diag.FromErr(fmt.Errorf("error reading existing secret: %w", readErr))
+			}
+
+			if len(existingSecrets) > 0 {
+				// Set the ID from the existing secret
+				secret.ID = existingSecrets[0].ID
+
+				// Now attempt to update
+				updatedSecret, updateErr := client.UpdateSecret(appID, env, fmt.Sprintf("Bearer %s", client.TokenType), secret)
+				if updateErr != nil {
+					return diag.FromErr(fmt.Errorf("error updating existing secret: %w", updateErr))
+				}
+
+				d.SetId(updatedSecret.ID)
+				return resourceSecretRead(ctx, d, meta)
+			} else {
+				return diag.FromErr(fmt.Errorf("received 409 Conflict but couldn't find existing secret: %w", err))
+			}
+		}
 		return diag.FromErr(err)
 	}
 
