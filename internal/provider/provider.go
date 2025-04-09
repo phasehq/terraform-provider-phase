@@ -98,6 +98,9 @@ func resourceSecret() *schema.Resource {
 		ReadContext:   resourceSecretRead,
 		UpdateContext: resourceSecretUpdate,
 		DeleteContext: resourceSecretDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceSecretImportState,
+		},
 
 		Schema: map[string]*schema.Schema{
 			"app_id": {
@@ -340,6 +343,78 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 
 	d.SetId("")
 	return nil
+}
+
+func resourceSecretImportState(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	client := meta.(*PhaseClient)
+	importID := d.Id()
+
+	// Parse the secret imported secret {app_id}:{env}:{path}:{key} - 907549ca-1430-4aa0-9998-290525741005:production:/folder/path/:SECRET_1
+	parts := strings.SplitN(importID, ":", 4)
+	if len(parts) != 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		return nil, fmt.Errorf("unexpected format of ID (%s), expected {app_id}:{env}:{path}:{key}", importID)
+	}
+
+	appID := parts[0]
+	env := parts[1]
+	path := parts[2]
+	key := parts[3]
+
+	// Fetch all secrets at that given path
+	secretsAtPath, err := client.ListSecrets(appID, env, path, fmt.Sprintf("Bearer %s", client.TokenType))
+	if err != nil {
+		// Handle API errors from ListSecrets
+		return nil, fmt.Errorf("error listing secrets for path '%s' during import: %w", path, err)
+	}
+
+	// Find the specific secret matching the key within the results from the path
+	var targetSecret *Secret
+	for i := range secretsAtPath {
+		if secretsAtPath[i].Key == key {
+			targetSecret = &secretsAtPath[i]
+			break
+		}
+	}
+
+	// If no secret was found, return an error
+	if targetSecret == nil {
+		return nil, fmt.Errorf("no secret found with key '%s' at path '%s' in app '%s', env '%s'", key, path, appID, env)
+	}
+
+	// Populate the rest of the resource data
+	d.Set("app_id", appID)
+	d.Set("env", env)
+	d.Set("key", key)
+	d.SetId(targetSecret.ID)
+	d.Set("path", targetSecret.Path)
+	d.Set("comment", targetSecret.Comment)
+	d.Set("tags", targetSecret.Tags)
+	d.Set("version", targetSecret.Version)
+	d.Set("created_at", targetSecret.CreatedAt)
+	d.Set("updated_at", targetSecret.UpdatedAt)
+
+	// Handle personal secret overrides
+	if targetSecret.Override != nil && targetSecret.Override.IsActive {
+		d.Set("value", targetSecret.Override.Value)
+		// Ensure the override block in state reflects the imported override
+		overrideState := []interface{}{
+			map[string]interface{}{ // Convert SecretOverride struct to map[string]interface{}
+				"value":     targetSecret.Override.Value,
+				"is_active": targetSecret.Override.IsActive,
+			},
+		}
+		if err := d.Set("override", overrideState); err != nil {
+			return nil, fmt.Errorf("error setting override state during import: %w", err)
+		}
+	} else {
+		d.Set("value", targetSecret.Value)
+		// Clear the override block if no active override exists
+		if err := d.Set("override", []interface{}{}); err != nil {
+			return nil, fmt.Errorf("error clearing override state during import: %w", err)
+		}
+	}
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func dataSourceSecrets() *schema.Resource {
