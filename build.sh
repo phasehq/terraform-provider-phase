@@ -1,19 +1,16 @@
 #!/bin/bash
 
 # Set the version
-VERSION="0.1.1"
+VERSION="0.2.0"
 
-# Build the provider
-go build -o terraform-provider-phase
+# Build the provider with the expected naming convention
+go build -o terraform-provider-phase_v${VERSION}
 
-# Create the plugin directory if it doesn't exist
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/${VERSION}/$(go env GOOS)_$(go env GOARCH)/
-
-# Move the binary to the plugin directory
-mv terraform-provider-phase ~/.terraform.d/plugins/registry.terraform.io/phasehq/phase/${VERSION}/$(go env GOOS)_$(go env GOARCH)/
+# Create a symlink with the exact naming convention Terraform expects
+# Format: terraform-provider-{NAME}_v{VERSION}_{OS}_{ARCH}
+OS=$(go env GOOS)
+ARCH=$(go env GOARCH)
+ln -sf terraform-provider-phase_v${VERSION} terraform-provider-phase_v${VERSION}_${OS}_${ARCH}
 
 # Remove the lock file if it exists
 rm -f .terraform.lock.hcl
-
-# Initialize Terraform
-terraform init
