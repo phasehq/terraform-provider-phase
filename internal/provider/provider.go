@@ -34,7 +34,8 @@ func Provider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"phase_secret": resourceSecret(),
+			"phase_secret":      resourceSecret(),
+			"phase_application": resourceApplication(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"phase_secrets": dataSourceSecrets(),
@@ -43,7 +44,7 @@ func Provider() *schema.Provider {
 	}
 }
 
-func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+func providerConfigure(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
 	phaseToken := d.Get("phase_token").(string)
 	host := d.Get("host").(string)
 	skipTLSVerification := d.Get("skip_tls_verification").(bool)
@@ -90,6 +91,12 @@ func extractTokenInfo(phaseToken string) (string, string) {
 	}
 
 	return "", phaseToken
+}
+
+func resourceApplication() *schema.Resource {
+	return &schema.Resource{
+		CreateContext: resourceApplicationCreate,
+	}
 }
 
 func resourceSecret() *schema.Resource {
@@ -172,7 +179,34 @@ func resourceSecret() *schema.Resource {
 	}
 }
 
-func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceApplicationCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+	client := meta.(*PhaseClient)
+
+	application := Application{
+		Name: d.Get("name").(string),
+	}
+
+	if v, ok := d.GetOk("description"); ok {
+		application.Description = v.(string)
+	}
+
+	createdApplication, err := client.CreateApplication(application, fmt.Sprintf("Bearer %s", client.TokenType))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(createdApplication.ID)
+	d.Set("name", createdApplication.Name)
+	if createdApplication.Description != "" {
+		d.Set("description", createdApplication.Description)
+	}
+	d.Set("created_at", createdApplication.CreatedAt)
+	d.Set("updated_at", createdApplication.UpdatedAt)
+
+	return nil
+}
+
+func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	client := meta.(*PhaseClient)
 
 	secret := Secret{
@@ -185,7 +219,7 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	// Handle tags if present
 	if v, ok := d.GetOk("tags"); ok {
 		tags := make([]string, 0)
-		for _, tag := range v.([]interface{}) {
+		for _, tag := range v.([]any) {
 			tags = append(tags, tag.(string))
 		}
 		secret.Tags = tags
@@ -194,7 +228,7 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	if v, ok := d.GetOk("override"); ok {
 		overrideSet := v.(*schema.Set).List()
 		if len(overrideSet) > 0 {
-			overrideMap := overrideSet[0].(map[string]interface{})
+			overrideMap := overrideSet[0].(map[string]any)
 			secret.Override = &SecretOverride{
 				Value:    overrideMap["value"].(string),
 				IsActive: overrideMap["is_active"].(bool),
@@ -239,7 +273,7 @@ func resourceSecretCreate(ctx context.Context, d *schema.ResourceData, meta inte
 	return resourceSecretRead(ctx, d, meta)
 }
 
-func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	client := meta.(*PhaseClient)
 
 	appID := d.Get("app_id").(string)
@@ -273,21 +307,21 @@ func resourceSecretRead(ctx context.Context, d *schema.ResourceData, meta interf
 
 	if secret.Override != nil && secret.Override.IsActive {
 		d.Set("value", secret.Override.Value)
-		d.Set("override", []interface{}{
-			map[string]interface{}{
+		d.Set("override", []any{
+			map[string]any{
 				"value":     secret.Override.Value,
 				"is_active": secret.Override.IsActive,
 			},
 		})
 	} else {
 		d.Set("value", secret.Value)
-		d.Set("override", []interface{}{})
+		d.Set("override", []any{})
 	}
 
 	return nil
 }
 
-func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	client := meta.(*PhaseClient)
 
 	secret := Secret{
@@ -301,7 +335,7 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	// Handle tags if present
 	if v, ok := d.GetOk("tags"); ok {
 		tags := make([]string, 0)
-		for _, tag := range v.([]interface{}) {
+		for _, tag := range v.([]any) {
 			tags = append(tags, tag.(string))
 		}
 		secret.Tags = tags
@@ -310,7 +344,7 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	if v, ok := d.GetOk("override"); ok {
 		overrideSet := v.(*schema.Set).List()
 		if len(overrideSet) > 0 {
-			overrideMap := overrideSet[0].(map[string]interface{})
+			overrideMap := overrideSet[0].(map[string]any)
 			secret.Override = &SecretOverride{
 				Value:    overrideMap["value"].(string),
 				IsActive: overrideMap["is_active"].(bool),
@@ -329,7 +363,7 @@ func resourceSecretUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	return resourceSecretRead(ctx, d, meta)
 }
 
-func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	client := meta.(*PhaseClient)
 
 	appID := d.Get("app_id").(string)
@@ -345,7 +379,7 @@ func resourceSecretDelete(ctx context.Context, d *schema.ResourceData, meta inte
 	return nil
 }
 
-func resourceSecretImportState(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+func resourceSecretImportState(ctx context.Context, d *schema.ResourceData, meta any) ([]*schema.ResourceData, error) {
 	client := meta.(*PhaseClient)
 	importID := d.Id()
 
@@ -397,8 +431,8 @@ func resourceSecretImportState(ctx context.Context, d *schema.ResourceData, meta
 	if targetSecret.Override != nil && targetSecret.Override.IsActive {
 		d.Set("value", targetSecret.Override.Value)
 		// Ensure the override block in state reflects the imported override
-		overrideState := []interface{}{
-			map[string]interface{}{ // Convert SecretOverride struct to map[string]interface{}
+		overrideState := []any{
+			map[string]any{ // Convert SecretOverride struct to map[string]any
 				"value":     targetSecret.Override.Value,
 				"is_active": targetSecret.Override.IsActive,
 			},
@@ -409,7 +443,7 @@ func resourceSecretImportState(ctx context.Context, d *schema.ResourceData, meta
 	} else {
 		d.Set("value", targetSecret.Value)
 		// Clear the override block if no active override exists
-		if err := d.Set("override", []interface{}{}); err != nil {
+		if err := d.Set("override", []any{}); err != nil {
 			return nil, fmt.Errorf("error clearing override state during import: %w", err)
 		}
 	}
@@ -462,7 +496,7 @@ func dataSourceSecrets() *schema.Resource {
 	}
 }
 
-func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	client := meta.(*PhaseClient)
 
 	appID := d.Get("app_id").(string)
@@ -474,7 +508,7 @@ func dataSourceSecretsRead(ctx context.Context, d *schema.ResourceData, meta int
 	var tagsFilter string
 	if v, ok := d.GetOk("tags"); ok {
 		tags := make([]string, 0)
-		for _, tag := range v.([]interface{}) {
+		for _, tag := range v.([]any) {
 			tags = append(tags, tag.(string))
 		}
 		if len(tags) > 0 {

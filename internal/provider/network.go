@@ -221,6 +221,44 @@ func (c *PhaseClient) DeleteSecret(appID, env, secretID, tokenType string) error
 	return nil
 }
 
+func (c *PhaseClient) CreateApplication(app Application, tokenType string) (*Application, error) {
+	url := fmt.Sprintf("%s/v1/apps/", c.HostURL)
+
+	body, err := json.Marshal(app)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	c.setHeaders(req, tokenType)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("failed to create app: %s - %s", resp.Status, string(responseBody))
+	}
+
+	var application Application
+	err = json.Unmarshal(responseBody, &application)
+	if err != nil {
+		return nil, err
+	}
+	return &application, nil
+}
+
 // ListSecrets lists all secrets for a given app, environment, and path
 func (c *PhaseClient) ListSecrets(appID, env, path, tokenType string) ([]Secret, error) {
 	url := fmt.Sprintf("%s/v1/secrets/?app_id=%s&env=%s&path=%s", c.HostURL, appID, env, path)

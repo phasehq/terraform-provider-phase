@@ -3,6 +3,7 @@ package provider
 import (
 	"net/http"
 	"regexp"
+	"time"
 )
 
 const (
@@ -45,6 +46,15 @@ type SecretOverride struct {
 	ID       string `json:"id,omitempty"`
 	Value    string `json:"value"`
 	IsActive bool   `json:"isActive"`
+}
+
+type Application struct {
+	ID          string    `json:"id,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SseEnable   bool      `json:"sseEnabled,omitempty"`
+	CreatedAt   time.Time `json:"createdAt,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
 }
 
 var (
