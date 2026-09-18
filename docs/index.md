@@ -1,18 +1,19 @@
 # Phase Provider Documentation
 
-The Phase Terraform provider allows you to manage secrets and interact with the Phase API directly from your Terraform configurations.
+The Phase Terraform provider allows you to manage applications and secrets in Phase from your Terraform configurations.
 
 ## Example Usage
 
-Here's a basic example of configuring the provider and managing a secret:
+The following example creates a Phase application, manages a secret within that application, and retrieves secrets using the `phase_secrets` data source.
 
 ```hcl
 terraform {
   required_providers {
     phase = {
       source  = "phasehq/phase"
-      version = ">= 0.2.0" // Use the latest appropriate version
+      version = "0.2.0"
     }
+
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
@@ -20,46 +21,49 @@ terraform {
   }
 }
 
-# Configure the Phase Provider
-# Ensure PHASE_TOKEN environment variable is set, or provide phase_token directly.
 provider "phase" {
-  # host = "https://your-self-hosted-phase.com" # Optional: for self-hosted instances
-  # skip_tls_verification = true              # Optional: if using self-signed certs
+  # phase_token can also be provided through the PHASE_TOKEN environment variable.
+  # host = "https://your-self-hosted-phase.com"
+  # skip_tls_verification = true
 }
 
-# Generate a random value for a secret
+resource "phase_application" "example" {
+  name        = "my-application"
+  description = "Application managed by Terraform"
+}
+
 resource "random_password" "db_password" {
   length           = 32
   special          = true
   override_special = "_%@"
 }
 
-# Create or manage a secret in Phase
 resource "phase_secret" "database_password" {
-  app_id = "your-app-id"       # Replace with your actual App ID
-  env    = "production"        # Specify the environment
-  key    = "DATABASE_PASSWORD" # The key for the secret
+  app_id = phase_application.example.id
+  env    = "production"
+  key    = "DATABASE_PASSWORD"
   value  = random_password.db_password.result
-  path   = "/database"         # Optional: specify a path (defaults to "/")
-  tags   = ["database", "credentials"] # Optional: add tags that have already been created 
-  comment = "Managed by Terraform"      # Optional: add a comment
+  path   = "/database/"
+  tags   = ["database", "credentials"]
+  comment = "Managed by Terraform"
 }
 
-# Fetch secrets (example: all secrets at a specific path)
-data "phase_secrets" "database_secrets" {
-  app_id = phase_secret.database_password.app_id # Use values from managed resources
-  env    = phase_secret.database_password.env
-  path   = phase_secret.database_password.path
-  tags   = ["database"] # Optional: filter by tags
+data "phase_secrets" "database" {
+  app_id = phase_application.example.id
+  env    = "production"
+  path   = "/database/"
+  tags   = ["database"]
 }
 
-# Output a specific secret fetched by the data source
-output "db_password_read" {
-  value     = data.phase_secrets.database_secrets.secrets["DATABASE_PASSWORD"]
-  sensitive = true # Always mark sensitive outputs
+output "database_password" {
+  value     = data.phase_secrets.database.secrets["DATABASE_PASSWORD"]
+  sensitive = true
 }
 
-# Output attributes of the managed secret
+output "application_id" {
+  value = phase_application.example.id
+}
+
 output "managed_secret_version" {
   value = phase_secret.database_password.version
 }
@@ -71,162 +75,376 @@ output "managed_secret_updated_at" {
 
 ## Provider Configuration
 
-The following arguments are supported in the `provider "phase"` block:
+The following arguments are supported in the `provider "phase"` block.
 
-*   `phase_token` - (Optional, **Required** if env var not set) The Phase authentication token. This can be a Service Token (`pss_service:...`) or a Personal Access Token (`pss_user:...`).
-    *   **Environment Variables:** This value can be provided via `PHASE_TOKEN`, `PHASE_SERVICE_TOKEN`, or `PHASE_PAT_TOKEN` environment variables (checked in that order). Providing it in the configuration block takes precedence.
-    *   **Sensitive:** This value is sensitive.
-*   `host` - (Optional) The base URL for the Phase API.
-    *   **Default:** `https://api.phase.dev` (for Phase Cloud).
-    *   **Environment Variable:** Can be set using `PHASE_HOST`.
-    *   **Behavior:** If a custom host is provided (not the default), the provider automatically appends `/service/public` to the URL to target the correct API endpoint (e.g., `https://your-host.com/service/public`).
-*   `skip_tls_verification` - (Optional) Set to `true` to disable SSL/TLS certificate validation for the `host`. Useful for self-hosted instances with self-signed certificates. **Use with caution.** Defaults to `false`.
+### `phase_token`
+
+Optional. The Phase authentication token.
+
+The provider supports both:
+
+* Service Tokens (`pss_service:...`)
+* Personal Access Tokens (`pss_user:...`)
+
+The token can also be provided through an environment variable. The provider checks the following variables in order:
+
+1. `PHASE_TOKEN`
+2. `PHASE_SERVICE_TOKEN`
+3. `PHASE_PAT_TOKEN`
+
+A token configured directly in the provider configuration takes precedence over environment variables.
+
+The token is sensitive and should not be committed to source control.
+
+Example:
+
+```hcl
+provider "phase" {
+  phase_token = var.phase_token
+}
+```
+
+Or using an environment variable:
+
+```sh
+export PHASE_TOKEN="pss_service:v1:..."
+```
+
+### `host`
+
+Optional. The base URL for the Phase API.
+
+Default:
+
+```text
+https://api.phase.dev
+```
+
+For self-hosted Phase instances, provide the appropriate host URL.
+
+The provider automatically appends `/service/public` to custom hosts when required by the Phase API.
+
+Example:
+
+```hcl
+provider "phase" {
+  host = "https://your-self-hosted-phase.com"
+}
+```
+
+The host can also be configured using the `PHASE_HOST` environment variable.
+
+### `skip_tls_verification`
+
+Optional. Disables TLS certificate verification when set to `true`.
+
+This can be useful for self-hosted Phase instances using self-signed certificates.
+
+Defaults to `false`.
+
+```hcl
+provider "phase" {
+  host                 = "https://your-self-hosted-phase.com"
+  skip_tls_verification = true
+}
+```
+
+Use this option with caution.
 
 ## Resources
 
-### `phase_secret`
+### `phase_application`
 
-Manages a single secret within a specific application and environment in Phase.
+Manages an application in Phase.
 
-The provider handles create, read, update, and delete operations. If a `phase_secret` resource is defined for a secret that already exists (based on `app_id`, `env`, `path`, `key`), the provider will manage the existing secret and update it if necessary, rather than failing.
+#### Example Usage
+
+```hcl
+resource "phase_application" "example" {
+  name        = "my-application"
+  description = "Application managed by Terraform"
+}
+```
 
 #### Argument Reference
 
-*   `app_id` - (Required, ForceNew) The UUID of the Phase application where the secret resides. Changing this forces a new resource to be created.
-*   `env` - (Required, ForceNew) The name of the environment within the application (e.g., `development`, `production`). Changing this forces a new resource to be created.
-*   `key` - (Required) The key (name) of the secret (e.g., `DATABASE_URL`, `API_KEY`).
-*   `value` - (Required, Sensitive) The value of the secret.
-*   `path` - (Optional) The path where the secret is stored within the environment. Defaults to `/` (root). Example: `/database/credentials`.
-*   `comment` - (Optional) A description or comment for the secret.
-*   `tags` - (Optional) A list of strings to tag the secret with. Tags can be used for filtering when reading secrets.
-*   `override` - (Optional) A block to configure a **Personal Secret Override**. This requires authenticating with a User Token (PAT). **Note:** This block *configures* the override value in Phase; its *activation* must still be done via the Phase Console or CLI.
-    *   `value` - (Required, Sensitive) The value to use when this override is active for the authenticated user.
-    *   `is_active` - (Required, Boolean) Must be set to `true` to configure the override. The provider currently only supports setting active overrides via this block. Setting it to `false` may not explicitly deactivate it via the API, but removes the override configuration from the state.
+* `name` - (Required) The name of the application.
+* `description` - (Optional) A description for the application.
 
 #### Attribute Reference
 
 In addition to the arguments above, the following attributes are exported:
 
-*   `id` - The unique UUID assigned to the secret by Phase upon creation.
-*   `version` - The current version number of the secret. Incremented on each update.
-*   `created_at` - The timestamp (UTC RFC3339 format) when the secret was first created.
-*   `updated_at` - The timestamp (UTC RFC3339 format) when the secret was last updated.
+* `id` - The unique identifier assigned to the application by Phase.
+* `created_at` - The timestamp when the application was created.
+* `updated_at` - The timestamp when the application was last updated.
+
+#### Using an Application with Secrets
+
+The application ID can be referenced directly by `phase_secret` resources and `phase_secrets` data sources:
+
+```hcl
+resource "phase_application" "example" {
+  name = "my-application"
+}
+
+resource "phase_secret" "api_key" {
+  app_id = phase_application.example.id
+  env    = "production"
+  key    = "API_KEY"
+  value  = "my-secret-value"
+}
+```
+
+### `phase_secret`
+
+Manages a single secret within a specific application and environment in Phase.
+
+The provider supports create, read, update, and delete operations. If a secret already exists for the specified application, environment, and key, the provider attempts to manage the existing secret instead of failing during creation.
+
+#### Argument Reference
+
+* `app_id` - (Required, ForceNew) The ID of the Phase application where the secret resides. Changing this forces a new resource to be created.
+* `env` - (Required, ForceNew) The name of the environment within the application, such as `development` or `production`.
+* `key` - (Required) The key of the secret, such as `DATABASE_URL` or `API_KEY`.
+* `value` - (Required, Sensitive) The value of the secret.
+* `path` - (Optional) The path where the secret is stored. Defaults to `/`.
+* `comment` - (Optional) A description or comment for the secret.
+* `tags` - (Optional) A list of tags assigned to the secret.
+* `override` - (Optional) A block used to configure a Personal Secret Override. This requires authentication with a User Token (PAT).
+
+  * `value` - (Required, Sensitive) The value to use when the override is active.
+  * `is_active` - (Required, Boolean) Whether the override is active.
+
+#### Attribute Reference
+
+In addition to the arguments above, the following attributes are exported:
+
+* `id` - The unique identifier assigned to the secret by Phase.
+* `version` - The current version of the secret.
+* `created_at` - The timestamp when the secret was created.
+* `updated_at` - The timestamp when the secret was last updated.
+
+#### Example
+
+```hcl
+resource "phase_secret" "database_password" {
+  app_id = phase_application.example.id
+  env    = "production"
+  key    = "DATABASE_PASSWORD"
+  value  = "my-secret-password"
+  path   = "/database/"
+  tags   = ["database", "credentials"]
+  comment = "Managed by Terraform"
+}
+```
 
 ## Data Sources
 
 ### `phase_secrets`
 
-Fetches multiple secrets from Phase based on specified filters.
+Fetches multiple secrets from Phase using application, environment, path, key, and tag filters.
 
 #### Argument Reference
 
-*   `app_id` - (Required) The UUID of the Phase application.
-*   `env` - (Required) The name of the environment.
-*   `path` - (Optional) The path to filter secrets by. If omitted or empty, secrets from the root path (`/`) are fetched by default (behavior might depend on API specifics, explicitly use `/` for root). **Note:** The API endpoint used might primarily fetch based on `key` if provided, potentially ignoring `path`. For guaranteed path-based fetching without a specific key, ensure `key` is omitted. For fetching *all* secrets regardless of path, this might require multiple data source calls or future provider enhancements if the API requires path specification.
-*   `key` - (Optional) The key of a *specific* secret to fetch. If provided, only the secret matching this key (within the specified `app_id` and `env`, considering `path` behavior mentioned above) will be returned.
-*   `tags` - (Optional) A list of strings (tags) to filter secrets by. Secrets matching *any* of the provided tags will be included (OR logic).
+* `app_id` - (Required) The ID of the Phase application.
+* `env` - (Required) The name of the environment.
+* `path` - (Optional) The path used to filter the returned secrets. Defaults to `/`.
+* `key` - (Optional) The key of a specific secret to fetch.
+* `tags` - (Optional) A list of tags used to filter secrets.
 
 #### Attribute Reference
 
-*   `secrets` - (Computed, Sensitive) A map where keys are the secret keys (e.g., `DATABASE_URL`) and values are their corresponding secret values. If a Personal Secret Override is active for the authenticated user, the override value will be returned here.
-*   `id` - A unique identifier constructed by the provider for this data source instance based on the input arguments (`app_id`, `env`, `path`, `key`, `tags`).
+* `secrets` - (Computed, Sensitive) A map where each key is a secret key and each value is the corresponding secret value.
+
+If a Personal Secret Override is active for the authenticated user, the override value is returned instead of the regular secret value.
+
+* `id` - A unique identifier constructed by the provider from the data source arguments.
+
+#### Example
+
+```hcl
+data "phase_secrets" "database" {
+  app_id = phase_application.example.id
+  env    = "production"
+  path   = "/database/"
+}
+
+output "database_password" {
+  value     = data.phase_secrets.database.secrets["DATABASE_PASSWORD"]
+  sensitive = true
+}
+```
+
+### Fetching a Specific Secret
+
+Use the `key` argument when only a specific secret is required:
+
+```hcl
+data "phase_secrets" "database_password" {
+  app_id = phase_application.example.id
+  env    = "production"
+  path   = "/database/"
+  key    = "DATABASE_PASSWORD"
+}
+
+output "database_password" {
+  value     = data.phase_secrets.database_password.secrets["DATABASE_PASSWORD"]
+  sensitive = true
+}
+```
+
+### Filtering by Tags
+
+Tags can be supplied to the `phase_secrets` data source:
+
+```hcl
+data "phase_secrets" "backend" {
+  app_id = phase_application.example.id
+  env    = "production"
+  path   = "/backend/"
+  tags   = ["api", "database"]
+}
+```
+
+The tags are passed to the Phase API as filters.
 
 ## Importing
 
-Existing secrets managed outside of Terraform can be imported into your Terraform state.
+Existing secrets managed outside Terraform can be imported into Terraform state.
 
-Use the `terraform import` command with the following ID format:
+### Importing a Secret
+
+Use the following ID format:
 
 ```bash
-terraform import phase_secret.<resource_name_in_tf> "{app_id}:{env}:{path}:{key}"
+terraform import phase_secret.<resource_name> "{app_id}:{env}:{path}:{key}"
 ```
 
-**Components:**
-
-*   `phase_secret.<resource_name_in_tf>`: The type and name of the resource block in your Terraform configuration (`.tf` file) that corresponds to the secret you want to import.
-*   `{app_id}`: The UUID of the application.
-*   `{env}`: The name of the environment.
-*   `{path}`: The **exact** path where the secret exists in Phase, including leading and trailing slashes if applicable (e.g., `/`, `/database/`, `/folder/path/`).
-*   `{key}`: The key of the secret.
-
-**Example:**
+For example:
 
 ```bash
-# Assuming a resource block like: resource "phase_secret" "imported_secret" { ... }
 terraform import phase_secret.imported_secret "907549ca-1430-4aa0-9998-290525741005:production:/database/:DB_HOST"
 ```
 
-After importing, run `terraform plan` to see any differences between your configuration and the imported state, and adjust your `.tf` file accordingly.
+The components are:
 
-## Advanced Topics
+* `app_id` - The ID of the Phase application.
+* `env` - The environment containing the secret.
+* `path` - The exact path where the secret exists.
+* `key` - The key of the secret.
 
-### Personal Secret Overrides
+After importing the secret, run:
 
-Personal Secret Overrides allow individual users (authenticating with a User Token/PAT) to temporarily use a different value for a secret without affecting the globally stored value.
+```bash
+terraform plan
+```
 
-*   **Authentication:** Requires a `pss_user:...` token. Service tokens (`pss_service:...`) cannot read or manage overrides.
-*   **Provider Interaction:**
-    *   **Reading (`data "phase_secrets"`):** If an override is *active* in Phase for the authenticated user, the data source will return the override value.
-    *   **Managing (`resource "phase_secret"`):** You can define the `override` block in a `phase_secret` resource to *configure* the override value in Phase. However, **activating** the override must still be done separately through the Phase Console or CLI. The provider essentially sets the stage for the override.
-*   **Visibility:** Overrides are personal. Only the user who created and activated the override (and is authenticated with their PAT) will see the overridden value via the provider.
+to review the imported state against your Terraform configuration.
 
-### Working with Tags
+## Personal Secret Overrides
 
-Tags provide a way to categorize and filter secrets.
+Personal Secret Overrides allow an individual user to use a different value for a secret without changing the globally stored secret.
 
-Please note: To be able to assign tags, they must be already created in the Phase Console before hand.
+Overrides require authentication with a Personal Access Token (`pss_user:...`).
 
-*   **Assigning Tags:** Use the `tags` argument in the `phase_secret` resource:
-    ```hcl
-    resource "phase_secret" "api_key" {
-      # ... other args ...
-      key  = "THIRD_PARTY_API_KEY"
-      path = "/integrations/"
-      tags = ["api", "billing", "external"]
-    }
-    ```
-*   **Filtering by Tags:** Use the `tags` argument in the `phase_secrets` data source. It returns secrets matching *any* of the specified tags (OR logic).
-    ```hcl
-    # Fetch secrets tagged with 'database' OR 'redis'
-    data "phase_secrets" "cache_and_db" {
-      app_id = "your-app-id"
-      env    = "staging"
-      tags   = ["database", "redis"]
-    }
+### Reading Overrides
 
-    # Fetch 'api' tagged secrets specifically from the '/backend' path
-    data "phase_secrets" "backend_api" {
-      app_id = "your-app-id"
-      env    = "staging"
-      path   = "/backend/"
-      tags   = ["api"]
-    }
+When an active override exists for the authenticated user, the `phase_secrets` data source returns the override value.
 
-    output "api_keys" {
-      value     = data.phase_secrets.backend_api.secrets
-      sensitive = true
-    }
-    ```
+### Managing Overrides
 
-### Secret Metadata
+A `phase_secret` resource can configure an override:
 
-The `phase_secret` resource exports metadata about the managed secret:
+```hcl
+resource "phase_secret" "api_key" {
+  app_id = phase_application.example.id
+  env    = "development"
+  key    = "API_KEY"
+  value  = "production-api-key"
+
+  override {
+    value     = "local-development-api-key"
+    is_active = true
+  }
+}
+```
+
+The override is personal to the authenticated user.
+
+## Working with Tags
+
+Tags can be assigned to secrets and used as filters when reading secrets.
+
+Tags must already exist in Phase before they can be assigned to a secret.
+
+### Assigning Tags
+
+```hcl
+resource "phase_secret" "api_key" {
+  app_id = phase_application.example.id
+  env    = "production"
+  key    = "THIRD_PARTY_API_KEY"
+  value  = "my-api-key"
+  path   = "/integrations/"
+  tags   = ["api", "billing", "external"]
+}
+```
+
+### Filtering by Tags
+
+```hcl
+data "phase_secrets" "backend" {
+  app_id = phase_application.example.id
+  env    = "production"
+  path   = "/backend/"
+  tags   = ["api", "billing"]
+}
+```
+
+## Secret Metadata
+
+The `phase_secret` resource exports metadata about the managed secret.
 
 ```hcl
 resource "phase_secret" "config" {
-  app_id = "your-app-id"
+  app_id = phase_application.example.id
   env    = "production"
   key    = "FEATURE_FLAG_X"
   value  = "true"
 }
 
 output "config_version" {
-  description = "Current version of the feature flag secret."
-  value       = phase_secret.config.version
+  value = phase_secret.config.version
 }
 
 output "config_last_updated" {
-  description = "Timestamp when the feature flag was last modified."
-  value       = phase_secret.config.updated_at
+  value = phase_secret.config.updated_at
 }
+```
+
+## Development
+
+Run the complete test suite with:
+
+```sh
+go test -count=1 ./...
+```
+
+To run tests for a specific package:
+
+```sh
+go test -count=1 ./internal/resources
+```
+
+To run tests with verbose output:
+
+```sh
+go test -count=1 -v ./...
+```
+
+To generate provider documentation:
+
+```sh
+go generate
 ```

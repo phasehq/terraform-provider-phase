@@ -3,3 +3,4 @@ terraform.tfstate
 terraform-provider
 .terraform.lock.hcl
 terraform-provider-phase
+.env
