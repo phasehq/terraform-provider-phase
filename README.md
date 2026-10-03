@@ -1,6 +1,8 @@
 # Terraform Provider for Phase
 
-This Terraform provider allows you to manage secrets in Phase from your Terraform configurations.
+This Terraform provider allows you to manage secrets, apps, environments, service accounts and invites in Phase from your Terraform configurations.
+
+Secrets are encrypted and decrypted client-side through the [Phase Go SDK](https://github.com/phasehq/golang-sdk), so plaintext values never leave your machine; the management resources use the Phase REST API. See [docs/index.md](docs/index.md) for every resource and data source.
 
 ## Usage
 
@@ -11,14 +13,14 @@ terraform {
   required_providers {
     phase = {
       source  = "phasehq/phase"
-      version = "0.1.1" // replace with latest version
+      version = "0.3.0" // replace with latest version
     }
   }
 }
 
 # Configure the Phase Provider
 provider "phase" {
-  phase_token = "pss_service:v1:..." # or "pss_user:v1:..." // A Phase Service Token or a Phase User Token (PAT)
+  phase_token = "pss_service:v2:..." # or "pss_user:v1:..." // A Phase Service Account Token or a Phase User Token (PAT)
 }
 
 # Retrieve all secrets under a specific path
@@ -37,7 +39,8 @@ output "secret_keys" {
 // Fetch all secrets
 # Use secrets
 output "all_secret_keys" {
-  value = data.phase_secrets.all.secrets
+  value     = data.phase_secrets.all.secrets
+  sensitive = true
 }
 ```
 
@@ -46,7 +49,7 @@ See the [Phase Provider documentation](docs/index.md) for all the available opti
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
-- [Go](https://golang.org/doc/install) >= 1.18
+- [Go](https://golang.org/doc/install) >= 1.25
 
 ## Building The Provider
 
