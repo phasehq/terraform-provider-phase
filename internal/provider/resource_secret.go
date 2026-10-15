@@ -67,8 +67,9 @@ func resourceSecret() *schema.Resource {
 				Optional: true,
 				Default:  "/",
 			},
+			// A set: the API returns tags in no fixed order.
 			"tags": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
