@@ -97,7 +97,7 @@ The provider handles create, read, update, and delete operations. If a `phase_se
 *   `value` - (Required, Sensitive) The value of the secret (an empty string is allowed). Secret references such as `${OTHER_KEY}` are stored verbatim; write them as `$${OTHER_KEY}` in HCL.
 *   `path` - (Optional) The path where the secret is stored within the environment. Defaults to `/` (root). Example: `/database/credentials`.
 *   `comment` - (Optional) A description or comment for the secret.
-*   `tags` - (Optional) A list of tag names. Tags that do not exist yet are created automatically.
+*   `tags` - (Optional) A set of tag names. Order does not matter. Tags that do not exist yet are created automatically.
 *   `type` - (Optional, Computed) The secret type: `secret` (default), `config` or `sealed`. Sealed secrets cannot be unsealed, and changing the value of a sealed secret re-creates it.
 *   `override` - (Optional) A block to configure a **Personal Secret Override**. This requires authenticating with a User Token (PAT).
     *   `value` - (Required, Sensitive) The value to use when this override is active for the authenticated user.
