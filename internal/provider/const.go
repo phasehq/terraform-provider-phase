@@ -7,7 +7,7 @@ import (
 
 const (
 	// Version of the provider
-	Version = "0.2.0"
+	Version = "0.2.1"
 
 	// DefaultHostURL is the default host for Phase API
 	DefaultHostURL = "https://api.phase.dev"
