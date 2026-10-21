@@ -2,6 +2,8 @@ module github.com/phasehq/terraform-provider
 
 go 1.22.5
 
+toolchain go1.27.3
+
 require github.com/hashicorp/terraform-plugin-sdk/v2 v2.34.0
 
 require (
